@@ -1,47 +1,75 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-    <title>Pi Socket Latency Test</title>
-    <script src="https://cdn.jsdelivr.net/npm/nexusui@2.0.5/dist/NexusUI.js"></script>
+  <meta charset="UTF-8">
+  <title>UDP Control Knob</title>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: #111;
+      color: white;
+      font-family: sans-serif;
+      flex-direction: column;
+    }
+    .knob-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    input[type=range] {
+      appearance: none;
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      background: conic-gradient(#0ff calc(var(--val, 0) * 1%), #333 0);
+      transform: rotate(-135deg);
+      outline: none;
+      cursor: pointer;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      background: #0ff;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    #value {
+      margin-top: 20px;
+      font-size: 1.5em;
+    }
+  </style>
 </head>
 <body>
-    <h2>TCP vs UDP Latency Test</h2>
-    <form action="/send" method="post">
-        <label>Message:</label>
-        <input name="msg"><br><br>
+  <div class="knob-container">
+    <input id="knob" type="range" min="0" max="100" value="50">
+    <div id="value">50</div>
+  </div>
 
-        <label>Protocol:</label>
-        <select name="proto">
-            <option value="tcp">TCP</option>
-            <option value="udp">UDP</option>
-        </select>
-        <br><br>
+  <script>
+    // Connect to Flask SocketIO
+    const socket = io();
 
-        <input type="submit" value="Send">
-    </form>
+    const knob = document.getElementById("knob");
+    const valText = document.getElementById("value");
 
-    {% if result %}
-    <h3>Result:</h3>
-    <p>{{ result }}</p>
-    {% endif %}
+    function updateKnobVisual(value) {
+      knob.style.setProperty("--val", value);
+      valText.textContent = value;
+    }
 
-    <h3>Knob Control</h3>
-    <canvas nx="dial" id="gainKnob"></canvas>
-    <script>
-        const knob = new Nexus.Dial('#gainKnob', {
-            size: [100, 100],
-            min: 0,
-            max: 1,
-            step: 0,
-            value: 0.5
-        });
-        knob.on('change', async (v) => {
-            await fetch('/update_knob', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ value: v })
-            });
-        });
-    </script>
+    knob.addEventListener("input", () => {
+      const value = knob.value;
+      updateKnobVisual(value);
+      socket.emit("knob_change", { value: value });
+    });
+
+    // Initialize the visual
+    updateKnobVisual(knob.value);
+  </script>
 </body>
 </html>

@@ -1,47 +1,23 @@
-from flask import Flask, request, render_template
-import threading, time, socket
-from tcp_server import tcp_server
-from udp_server import udp_server
+from flask import Flask, render_template
+from flask_socketio import SocketIO
+import socket
+from pythonosc.udp_client import SimpleUDPClient
 
 app = Flask(__name__)
+socketio = SocketIO(app)
+osc_ip = "127.0.0.1"   # change if your OSC target is on another device
+osc_port = 5005        # Carlas OSC UDP port (make sure this matches Carla)
+client = SimpleUDPClient(osc_ip, osc_port)
 
-@app.route("/", methods=["GET"])
-def home():
-    return render_template("index.html", result=None)
+@app.route("/")
+def index():
+    return render_template("index.html")
 
-@app.route("/send", methods=["POST"])
-def send_message():
-    msg = request.form["msg"]
-    proto = request.form["proto"]
-
-    host = "127.0.0.1"  # Pi itself
-    port = 5001
-
-    if proto == "tcp":
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        start = time.time()
-        s.connect((host, port))
-        s.sendall(msg.encode())
-        data = s.recv(1024).decode()
-        end = time.time()
-        s.close()
-    else:  # UDP
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        start = time.time()
-        s.sendto(msg.encode(), (host, port))
-        data, _ = s.recvfrom(1024)
-        data = data.decode()
-        end = time.time()
-        s.close()
-
-    latency_ms = (end - start) * 1000
-    result = f"{proto.upper()} reply: {data} | Latency: {latency_ms:.2f} ms"
-
-    return render_template("index.html", result=result)
+@socketio.on("knob_change")
+def handle_knob_change(data):
+    value = data["value"]
+    client.send_message("/Carla/1/set_parameter_value", [0, value])
+    
 
 if __name__ == "__main__":
-    # Start TCP and UDP servers in background threads
-    threading.Thread(target=tcp_server, daemon=True).start()
-    threading.Thread(target=udp_server, daemon=True).start()
-    
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    socketio.run(app, host="0.0.0.0", port=5000)
