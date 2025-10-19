@@ -39,26 +39,21 @@
     <div id="value">Value: 50</div>
 
     <script>
-      const socket = io({
-        transports: ['websocket'] // use WebSocket only, faster + less overhead
-      });
+      const socket = io('http://localhost:5000');
 
       const knob = document.getElementById('knob');
       const valueLabel = document.getElementById('value');
-      let timeoutId;
+
+      let previousValue=0;
 
       knob.addEventListener('input', (event) => {
-        const value = event.target.value;
-        valueLabel.textContent = "Value: " + value;
-
-        // Clear any existing timeout (resets the countdown)
-        clearTimeout(timeoutId);
-
-        // Only send after user stops adjusting for 300ms
-        timeoutId = setTimeout(() => {
-          socket.emit('knob_value', { value: parseInt(value) });
-          console.log("Sent value:", value);
-        }, 300);
+          const value = event.target.value;
+          valueLabel.textContent = "Value: " + value;
+          if(value!=previousValue){
+            socket.emit('knob_change', {value: parseInt(value)});
+            console.log("Sent Value: ", value);
+            previousValue=value;
+          }
       });
     </script>
   </body>
