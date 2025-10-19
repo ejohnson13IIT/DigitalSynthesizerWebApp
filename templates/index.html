@@ -145,7 +145,7 @@
     */
 
     (function(){
-      const socket = io(); // assumes socket.io served at /socket.io
+      const socket = io(); 
       const knob = document.getElementById('knob');
       const indicator = document.getElementById('indicator');
       const valueElem = document.getElementById('value');
@@ -164,6 +164,7 @@
       let dragging = false;
       let startPointer = {x:0, y:0};
       let startValue = value;
+      let previousValue = 0;
 
       // helpers
       function clamp(v){ return Math.min(MAX, Math.max(MIN, v)); }
@@ -182,7 +183,10 @@
 
         if (emit) {
           // emit immediately (raw numeric string)
-          socket.emit('knob_change', { value: value });
+          if (value != previousValue){
+            socket.emit('knob_change', { value: value });
+            previousValue=value;
+          }
         }
       }
 
