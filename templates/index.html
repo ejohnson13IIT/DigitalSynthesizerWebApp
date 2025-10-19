@@ -1,301 +1,65 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>UDP Control Knob</title>
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>UDP Knob Control</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        background-color: #111;
+        color: #fff;
+      }
 
-  <!-- Socket.IO client (matches server version; change if needed) -->
-  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+      input[type="range"] {
+        width: 300px;
+        accent-color: #00ffcc;
+      }
 
-  <style>
-    :root{
-      --knob-size: 180px;
-      --bg: #0f1113;
-      --knob-face: linear-gradient(135deg,#e6e6e6,#bdbdbd);
-      --accent: #00d1ff;
-      --shadow-dark: rgba(0,0,0,0.5);
-    }
+      label {
+        margin-bottom: 10px;
+        font-size: 1.2em;
+      }
 
-    html,body{
-      height:100%;
-      margin:0;
-      background:var(--bg);
-      font-family:system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-      color:#fff;
-      -webkit-font-smoothing:antialiased;
-      -moz-osx-font-smoothing:grayscale;
-    }
+      #value {
+        margin-top: 10px;
+        font-size: 1.5em;
+        color: #00ffcc;
+      }
+    </style>
+  </head>
+  <body>
+    <label for="knob">Adjust Parameter</label>
+    <input type="range" id="knob" min="0" max="100" step="1">
+    <div id="value">Value: 50</div>
 
-    .center {
-      height:100%;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      flex-direction:column;
-    }
+    <script>
+      const socket = io({
+        transports: ['websocket'] // use WebSocket only, faster + less overhead
+      });
 
-    h1 { margin-bottom: 18px; font-weight:600; font-size:18px; color:#e6eef1; }
-
-    /* Knob layout */
-    .knob-wrapper {
-      display:flex;
-      gap:18px;
-      align-items:center;
-      flex-direction:column;
-    }
-
-    .knob {
-      width:var(--knob-size);
-      height:var(--knob-size);
-      border-radius:50%;
-      background:var(--knob-face);
-      box-shadow:
-        inset -6px -6px 18px rgba(255,255,255,0.15),
-        inset 6px 6px 20px rgba(0,0,0,0.45),
-        0 8px 18px rgba(0,0,0,0.6);
-      display:grid;
-      place-items:center;
-      position:relative;
-      touch-action: none; /* allow touch drag */
-      user-select: none;
-      -webkit-user-select: none;
-    }
-
-    /* static center label (keeps upright) */
-    .knob .value {
-      position:absolute;
-      transform: translateY(6px); /* slightly lower so indicator doesn't overlap */
-      text-align:center;
-      font-size:26px;
-      font-weight:700;
-      color:#0b1214;
-      background: rgba(255,255,255,0.9);
-      width:66px;
-      height:40px;
-      line-height:40px;
-      border-radius:6px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
-      pointer-events:none;
-    }
-
-    /* indicator (rotated) */
-    .indicator {
-      position:absolute;
-      width:6px;
-      height:44%;
-      background:var(--accent);
-      top:12%;
-      left:50%;
-      transform-origin:50% 100%;
-      border-radius:4px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-      transition: transform 0.02s linear;
-      pointer-events:none;
-    }
-
-    /* ring / ticks (subtle) */
-    .ring {
-      position:absolute;
-      inset:8px;
-      border-radius:50%;
-      box-shadow: inset 0 0 0 2px rgba(0,0,0,0.06);
-      pointer-events:none;
-    }
-
-    /* visible label under knob */
-    .label {
-      margin-top:12px;
-      color:#cfeff7;
-      font-size:14px;
-    }
-
-    /* accessible hidden input for keyboard support */
-    .sr-only {
-      position:absolute;
-      left:-9999px;
-      width:1px;height:1px;overflow:hidden;
-    }
-  </style>
-</head>
-<body>
-  <div class="center">
-    <h1>Knob control — emits value via Socket.IO (0–100)</h1>
-
-    <div class="knob-wrapper">
-      <div id="knob" class="knob" role="slider" aria-valuemin="0" aria-valuemax="100" tabindex="0" aria-valuenow="50" aria-label="Parameter Knob">
-        <div class="ring"></div>
-        <div id="indicator" class="indicator"></div>
-        <div id="value" class="value">50</div>
-      </div>
-      <div class="label">Value: <span id="valueText">50</span></div>
-    </div>
-
-    <!-- Hidden numeric input for a11y/keyboard fallback (keeps focusable) -->
-    <input id="hiddenRange" class="sr-only" type="range" min="0" max="100" value="50" />
-  </div>
-
-  <script>
-    /*
-      Behavior:
-      - Visual rotation maps numeric value (0-100) to angle range -135°..+135° (270° sweep)
-      - Mouse/touch drag horizontally to change value (also supports vertical drag)
-      - Wheel adjusts by 1 step when over knob
-      - Keyboard left/right/up/down adjust
-      - Emits "knob_change" via socket.io on every change
-    */
-
-    (function(){
-      const socket = io(); 
       const knob = document.getElementById('knob');
-      const indicator = document.getElementById('indicator');
-      const valueElem = document.getElementById('value');
-      const valueText = document.getElementById('valueText');
-      const hiddenRange = document.getElementById('hiddenRange');
+      const valueLabel = document.getElementById('value');
+      let timeoutId;
 
-      // config
-      const MIN = 0;
-      const MAX = 100;
-      const ANGLE_MIN = -135; // deg
-      const ANGLE_MAX = 135;  // deg
-      const SWEEP = ANGLE_MAX - ANGLE_MIN;
+      knob.addEventListener('input', (event) => {
+        const value = event.target.value;
+        valueLabel.textContent = "Value: " + value;
 
-      // state
-      let value = 50;
-      let dragging = false;
-      let startPointer = {x:0, y:0};
-      let startValue = value;
-      let previousValue = 0;
+        // Clear any existing timeout (resets the countdown)
+        clearTimeout(timeoutId);
 
-      // helpers
-      function clamp(v){ return Math.min(MAX, Math.max(MIN, v)); }
-      function valueToAngle(v){
-        return ANGLE_MIN + ( (v - MIN) / (MAX - MIN) ) * SWEEP;
-      }
-      function setValue(v, emit=true){
-        value = clamp(Math.round(v));
-        // update visuals
-        const angle = valueToAngle(value);
-        indicator.style.transform = `translateX(-50%) rotate(${angle}deg)`;
-        valueElem.textContent = value;
-        valueText.textContent = value;
-        knob.setAttribute('aria-valuenow', value);
-        hiddenRange.value = value;
-
-        if (emit) {
-          // emit immediately (raw numeric string)
-          if (value != previousValue){
-            socket.emit('knob_change', { value: value });
-            previousValue=value;
-          }
-        }
-      }
-
-      // pointer handling (mouse + touch unified)
-      function onPointerDown(ev){
-        ev.preventDefault();
-        dragging = true;
-        startPointer = getPointerPos(ev);
-        startValue = value;
-        knob.focus();
-      }
-
-      function onPointerMove(ev){
-        if(!dragging) return;
-        const p = getPointerPos(ev);
-        const dx = p.x - startPointer.x;
-        const dy = startPointer.y - p.y; // invert Y so moving up increases value
-        // combine dx and dy for intuitive control; horizontal primary but vertical also affects
-        const delta = dx + dy;
-        // scale: for smooth control, 1 pixel change ~ 0.4 value (tweak if you want faster/slower)
-        const sensitivity = 0.5; // smaller => slower change
-        const newVal = startValue + delta * sensitivity;
-        setValue(newVal, true);
-      }
-
-      function onPointerUp(ev){
-        if(dragging){
-          dragging = false;
-        }
-      }
-
-      function getPointerPos(ev){
-        if(ev.touches && ev.touches.length) {
-          return {x: ev.touches[0].clientX, y: ev.touches[0].clientY};
-        } else {
-          return {x: ev.clientX, y: ev.clientY};
-        }
-      }
-
-      // wheel support (fine adjustments)
-      function onWheel(ev){
-        ev.preventDefault();
-        const delta = ev.deltaY || ev.wheelDelta;
-        // on many devices deltaY positive when scrolling down; we want down -> decrease
-        const step = delta > 0 ? -1 : 1;
-        setValue(value + step, true);
-      }
-
-      // keyboard support
-      function onKey(ev){
-        let handled = true;
-        if(ev.key === 'ArrowLeft' || ev.key === 'ArrowDown') setValue(value - 1, true);
-        else if(ev.key === 'ArrowRight' || ev.key === 'ArrowUp') setValue(value + 1, true);
-        else if(ev.key === 'Home') setValue(MIN, true);
-        else if(ev.key === 'End') setValue(MAX, true);
-        else if(ev.key === 'PageUp') setValue(value + 5, true);
-        else if(ev.key === 'PageDown') setValue(value - 5, true);
-        else handled = false;
-
-        if(handled) ev.preventDefault();
-      }
-
-      // clicking on knob: set to position based on angle relative to center
-      function onClick(ev){
-        // allow quick jump to clicked angle
-        const rect = knob.getBoundingClientRect();
-        const cx = rect.left + rect.width/2;
-        const cy = rect.top + rect.height/2;
-        const x = ev.clientX - cx;
-        const y = cy - ev.clientY; // invert Y
-        const angleRad = Math.atan2(y, x); // radians
-        const angleDeg = angleRad * 180 / Math.PI;
-        // convert angleDeg to our 270-degree span; angleDeg ranges -180..180
-        // clamp to ANGLE_MIN..ANGLE_MAX
-        let clamped = Math.max(ANGLE_MIN, Math.min(ANGLE_MAX, angleDeg));
-        // convert back to value
-        const ratio = (clamped - ANGLE_MIN) / SWEEP;
-        setValue(MIN + ratio * (MAX - MIN), true);
-      }
-
-      // connect pointer events
-      knob.addEventListener('mousedown', onPointerDown);
-      window.addEventListener('mousemove', onPointerMove);
-      window.addEventListener('mouseup', onPointerUp);
-
-      knob.addEventListener('touchstart', onPointerDown, {passive:false});
-      window.addEventListener('touchmove', onPointerMove, {passive:false});
-      window.addEventListener('touchend', onPointerUp);
-
-      knob.addEventListener('wheel', onWheel, {passive:false});
-      knob.addEventListener('keydown', onKey);
-      knob.addEventListener('click', onClick);
-
-      // hidden range: sync with keyboard input or assistive tech
-      hiddenRange.addEventListener('input', (e)=> {
-        setValue(e.target.value, true);
+        // Only send after user stops adjusting for 300ms
+        timeoutId = setTimeout(() => {
+          socket.emit('knob_value', { value: parseInt(value) });
+          console.log("Sent value:", value);
+        }, 300);
       });
-
-      // initial setup
-      setValue(value, false); // init without emitting
-      // emit an initial value right after connecting
-      socket.on('connect', ()=> {
-        socket.emit('knob_change', { value: value });
-      });
-
-      // optional: show ack from server (for debugging)
-      // socket.on('ack', data => console.log('server ack', data));
-
-    })();
-  </script>
-</body>
+    </script>
+  </body>
 </html>
