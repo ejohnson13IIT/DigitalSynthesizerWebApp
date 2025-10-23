@@ -208,7 +208,7 @@
           valueDisplay.textContent = `Value: ${value}`;
           
           if (value !== previousValue) {
-            socket.emit('knob_change', { id, value });
+            socket.emit('knob_change', { id: id, value: value});
             console.log(`Knob ${id} Value: ${value}`);
             previousValue = value;
           }
