@@ -15,8 +15,10 @@ def index():
 
 @socketio.on("knob_change")
 def handle_knob_change(data):
-    parameterID=data["id"]
+    parameterID=data["knob"]
     value = data["value"]
+    rackID=data["rack"]
+    print(f"Knob Change - Rack: {rackID}, Parameter: {parameterID}, Value: {value}")
     client.send_message("/Carla/0/set_parameter_value", [parameterID, (value/100)*48-24])
     
 

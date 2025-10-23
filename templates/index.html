@@ -142,7 +142,7 @@
         rack.id = `rack-${rackCount}`;
         
         for (let i = 0; i < numKnobs; i++) {
-          const knob = createKnob(knobCount++);
+          const knob = createKnob(rackCount, i);
           rack.appendChild(knob);
         }
         
@@ -160,16 +160,18 @@
         }
       }
 
-      function createKnob(id) {
+      function createKnob(rackIndex, knobIndex) {
         const wrapper = document.createElement('div');
         wrapper.className = 'knob-wrapper';
         
         const label = document.createElement('label');
-        label.textContent = `Parameter ${id + 1}`;
+        // Number knobs starting at 1 within each rack
+        label.textContent = `Parameter ${knobIndex + 1}`;
         
         const knob = document.createElement('div');
         knob.className = 'knob';
-        knob.id = `knob-${id}`;
+        // Use per-rack id for easier debugging: rack-<r>-knob-<k>
+        knob.id = `rack-${rackIndex}-knob-${knobIndex}`;
         
         const valueDisplay = document.createElement('div');
         valueDisplay.className = 'value-display';
@@ -207,11 +209,12 @@
           knob.style.transform = `rotate(${rotation}deg)`;
           valueDisplay.textContent = `Value: ${value}`;
           
-          if (value !== previousValue) {
-            socket.emit('knob_change', { id: id, value: value});
-            console.log(`Knob ${id} Value: ${value}`);
-            previousValue = value;
-          }
+            if (value !== previousValue) {
+              // Emit rack and knob indices (0-based) and the value
+              socket.emit('knob_change', { rack: rackIndex, knob: knobIndex, value: value });
+              console.log(`Rack ${rackIndex} Knob ${knobIndex} Value: ${value}`);
+              previousValue = value;
+            }
         }
         
         knob.addEventListener('mousedown', (e) => {
@@ -236,18 +239,19 @@
         return wrapper;
       }
 
+      // NOTE: addKnob kept for legacy but creates a single-rack single-knob as a convenience
       function addKnob() {
         const container = document.getElementById('knobsContainer');
-        const newKnob = createKnob(knobCount);
-        container.appendChild(newKnob);
-        knobCount++;
+        const newRack = createRack(1);
+        container.appendChild(newRack);
+        rackCount++;
       }
 
       // Create initial rack with 4 knobs
-      const container = document.getElementById('knobsContainer');
-      const initialRack = createRack(4);
-      container.appendChild(initialRack);
-      rackCount++;
+  const container = document.getElementById('knobsContainer');
+  const initialRack = createRack(4);
+  container.appendChild(initialRack);
+  rackCount++;
     </script>
   </body>
 </html>
