@@ -18,8 +18,9 @@ def handle_knob_change(data):
     parameterID=data["knob"]
     value = data["value"]
     rackID=data["rack"]
+    sentMsg="/Carla/"+str(rackID)+"/set_parameter_value"
     print(f"Knob Change - Rack: {rackID}, Parameter: {parameterID}, Value: {value}")
-    client.send_message("/Carla/0/set_parameter_value", [parameterID, (value/100)*48-24])
+    client.send_message(sentMsg, [parameterID, (value/100)*48-24])
     
 
 if __name__ == "__main__":
