@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 socketio = SocketIO(app)
 osc_ip = "127.0.0.1"   # change if your OSC target is on another device
-osc_port = 5005        # Carlas OSC UDP port (make sure this matches Carla)
+osc_port = 28017        # Carlas OSC UDP port (make sure this matches Carla)
 client = SimpleUDPClient(osc_ip, osc_port)
 
 @app.route("/")

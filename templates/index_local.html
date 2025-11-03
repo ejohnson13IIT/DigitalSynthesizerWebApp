@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>UDP Knob Control</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background-color: #111;
+        color: #fff;
+        padding: 20px;
+      }
+
+      .knobs-container {
+        display: flex;
+        flex-direction: column;
+        gap: 40px;
+        margin: 20px;
+      }
+
+      .rack {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 30px;
+        margin: 10px;
+        padding: 20px;
+        background: #222;
+        border-radius: 10px;
+        border: 1px solid #00ffcc;
+      }
+
+      .knob-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin: 10px;
+      }
+
+      .knob {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        background: #222;
+        border: 4px solid #00ffcc;
+        position: relative;
+        cursor: pointer;
+        transform-origin: 50% 50%;
+      }
+
+      .knob::after {
+        content: '';
+        position: absolute;
+        width: 4px;
+        height: 50%;
+        background: #00ffcc;
+        top: 0;
+        left: calc(50% - 2px);
+        transform-origin: bottom;
+      }
+
+      .value-display {
+        margin-top: 10px;
+        font-size: 1.2em;
+        color: #00ffcc;
+      }
+
+      .control-panel {
+        margin: 20px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        background: #222;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #00ffcc;
+      }
+
+      button {
+        padding: 10px 20px;
+        background: #00ffcc;
+        border: none;
+        border-radius: 5px;
+        color: #111;
+        font-size: 1.1em;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: #00ddaa;
+      }
+
+      label {
+        margin: 10px;
+        font-size: 1.2em;
+      }
+
+      input[type="number"] {
+        padding: 8px;
+        width: 80px;
+        background: #333;
+        border: 2px solid #00ffcc;
+        border-radius: 5px;
+        color: #fff;
+        font-size: 1.1em;
+      }
+
+      input[type="number"]:focus {
+        outline: none;
+        border-color: #00ddaa;
+      }
+
+      /* Remove spinner buttons from number input */
+      input[type="number"]::-webkit-inner-spin-button,
+      input[type="number"]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Digital Synthesizer Control</h1>
+    <div class="control-panel">
+      <label for="knobCount">Number of knobs:</label>
+      <input type="number" id="knobCount" min="1" max="16" value="4">
+      <button onclick="addRack()">Add New Rack</button>
+    </div>
+    <div class="knobs-container" id="knobsContainer"></div>
+
+    <script>
+      const socket = io(); // connect to same origin (served by Flask on 127.0.0.1)
+      let knobCount = 0;
+      let rackCount = 0;
+
+      function createRack(numKnobs) {
+        const rack = document.createElement('div');
+        rack.className = 'rack';
+        rack.id = `rack-${rackCount}`;
+        
+        for (let i = 0; i < numKnobs; i++) {
+          const knob = createKnob(rackCount, i);
+          rack.appendChild(knob);
+        }
+        
+        return rack;
+      }
+
+      function addRack() {
+        const knobInput = document.getElementById('knobCount');
+        const numKnobs = parseInt(knobInput.value);        // ...existing code...
+        if (numKnobs && !isNaN(numKnobs) && numKnobs > 0 && numKnobs <= 16) {
+          const container = document.getElementById('knobsContainer');
+          const newRack = createRack(numKnobs);
+          container.appendChild(newRack);
+          rackCount++;
+        }
+      }
+
+      function createKnob(rackIndex, knobIndex) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'knob-wrapper';
+        
+        const label = document.createElement('label');
+        // Number knobs starting at 1 within each rack
+        label.textContent = `Parameter ${knobIndex + 1}`;
+        
+        const knob = document.createElement('div');
+        knob.className = 'knob';
+        // Use per-rack id for easier debugging: rack-<r>-knob-<k>
+        knob.id = `rack-${rackIndex}-knob-${knobIndex}`;
+        
+        const valueDisplay = document.createElement('div');
+        valueDisplay.className = 'value-display';
+        valueDisplay.textContent = 'Value: 50';
+        
+        wrapper.appendChild(label);
+        wrapper.appendChild(knob);
+        wrapper.appendChild(valueDisplay);
+        
+        let value = 50;
+        let previousValue = 50;
+        let rotating = false;
+        let startAngle;
+        
+        function rotateKnob(e) {
+          if (!rotating) return;
+          
+          const knobRect = knob.getBoundingClientRect();
+          const knobCenter = {
+            x: knobRect.left + knobRect.width / 2,
+            y: knobRect.top + knobRect.height / 2
+          };
+          
+          const angle = Math.atan2(
+            e.clientY - knobCenter.y,
+            e.clientX - knobCenter.x
+          ) * 180 / Math.PI;
+          
+          let rotation = angle - startAngle;
+          if (rotation < 0) rotation += 360;
+          
+          value = Math.round((rotation / 360) * 100);
+          value = Math.max(0, Math.min(100, value));
+          
+          knob.style.transform = `rotate(${rotation}deg)`;
+          valueDisplay.textContent = `Value: ${value}`;
+          
+            if (value !== previousValue) {
+              // Emit rack and knob indices (0-based) and the value
+              socket.emit('knob_change', { rack: rackIndex, knob: knobIndex, value: value });
+              console.log(`Rack ${rackIndex} Knob ${knobIndex} Value: ${value}`);
+              previousValue = value;
+            }
+        }
+        
+        knob.addEventListener('mousedown', (e) => {
+          rotating = true;
+          const knobRect = knob.getBoundingClientRect();
+          const knobCenter = {
+            x: knobRect.left + knobRect.width / 2,
+            y: knobRect.top + knobRect.height / 2
+          };
+          startAngle = Math.atan2(
+            e.clientY - knobCenter.y,
+            e.clientX - knobCenter.x
+          ) * 180 / Math.PI;
+          document.addEventListener('mousemove', rotateKnob);
+        });
+        
+        document.addEventListener('mouseup', () => {
+          rotating = false;
+          document.removeEventListener('mousemove', rotateKnob);
+        });
+        
+        return wrapper;
+      }
+
+      // NOTE: addKnob kept for legacy but creates a single-rack single-knob as a convenience
+      function addKnob() {
+        const container = document.getElementById('knobsContainer');
+        const newRack = createRack(1);
+        container.appendChild(newRack);
+        rackCount++;
+      }
+
+      // Create initial rack with 4 knobs
+  const container = document.getElementById('knobsContainer');
+  const initialRack = createRack(6);
+  container.appendChild(initialRack);
+  rackCount++;
+    </script>
+  </body>
+</html>
