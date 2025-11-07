@@ -37,7 +37,7 @@ a2jmidid -e &
 #Step 5: Actiavte Virtual Environment
 #   cd ~/DigitalSynthesizerWebApp
 #   source venv/bin/activate
-#
+
 # ============================================
 # Troubleshooting:
 # ============================================
@@ -50,4 +50,11 @@ a2jmidid -e &
 # To re-enable PulseAudio later (if needed):
 #   systemctl --user unmask pulseaudio pulseaudio.socket
 #   systemctl --user start pulseaudio
+
+#How to kill a process using a port
+# Find what's using the port
+#   lsof -i:(your port)
+# 
+# Then kill it using the PID shown
+#   kill -9 <PID>
 

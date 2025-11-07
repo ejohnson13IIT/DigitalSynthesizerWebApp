@@ -3,6 +3,11 @@ from flask_socketio import SocketIO
 import socket
 from pythonosc.udp_client import SimpleUDPClient
 from config_loader import get_osc_config, get_flask_config, get_carla_config
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -11,13 +16,15 @@ osc_cfg = get_osc_config()
 flask_cfg = get_flask_config()
 carla_cfg = get_carla_config()
 
-socketio = SocketIO(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 osc_ip = osc_cfg.get("ip", "127.0.0.1")
 osc_port = osc_cfg.get("udp_port", 28017)
 client = SimpleUDPClient(osc_ip, osc_port)
 
 # Get Carla client name for OSC path
 carla_client_name = carla_cfg.get("client_name", "Carla")
+logger.info(f"OSC client configured: {osc_ip}:{osc_port}")
+logger.info(f"Carla client name: {carla_client_name}")
 
 @app.route("/")
 def index():
@@ -25,11 +32,16 @@ def index():
 
 @socketio.on("knob_change")
 def handle_knob_change(data):
-    parameterID=data["knob"]
-    value = data["value"]
-    rackID=data["rack"]
-    sentMsg=f"/{carla_client_name}/{rackID}/set_parameter_value"
-    client.send_message(sentMsg, [parameterID, (value/100)*48-24])
+    try:
+        parameterID = data["knob"]
+        value = data["value"]
+        rackID = data["rack"]
+        sentMsg = f"/{carla_client_name}/{rackID}/set_parameter_value"
+        osc_value = (value/100)*48-24
+        client.send_message(sentMsg, [parameterID, osc_value])
+        logger.info(f"OSC sent: {sentMsg} [{parameterID}, {osc_value:.2f}] (from web value: {value})")
+    except Exception as e:
+        logger.error(f"Error in handle_knob_change: {e}")
 
 if __name__ == "__main__":
     flask_host = flask_cfg.get("host", "0.0.0.0")
