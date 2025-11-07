@@ -132,7 +132,8 @@
     <div class="knobs-container" id="knobsContainer"></div>
 
     <script>
-      const socket = io('http://synthbox.local:5000');
+      // Connect to Socket.IO on the same server (relative URL)
+      const socket = io();
       let knobCount = 0;
       let rackCount = 0;
 

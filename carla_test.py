@@ -1,9 +1,15 @@
 from pythonosc.udp_client import SimpleUDPClient
+import sys
+import os
 
-# 💡 Replace this with the "Host URL" port Carla shows
-# e.g. osc.udp://127.0.0.1:34983/ → use 34983
-CARLA_IP = "127.0.0.1"
-CARLA_PORT = 28017  # <-- change this to match your actual Host URL port
+# Add project root to path for config loader
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from config_loader import get_osc_config
+
+# Load OSC configuration
+osc_cfg = get_osc_config()
+CARLA_IP = osc_cfg.get("ip", "127.0.0.1")
+CARLA_PORT = osc_cfg.get("udp_port", 28017)
 
 # Create the OSC client
 client = SimpleUDPClient(CARLA_IP, CARLA_PORT)

@@ -82,6 +82,21 @@ threading.Thread(target=idle_loop, daemon=True).start()
 # === Flask app ===
 app = Flask(__name__)
 
+@app.route("/", methods=["GET"])
+def index():
+    """API information and available endpoints"""
+    return jsonify({
+        "name": "Carla Startup API",
+        "version": "1.0",
+        "endpoints": {
+            "GET /plugins": "List all loaded plugins",
+            "GET /plugins/<id>/parameters": "List parameters for a plugin",
+            "POST /plugins/set_parameter": "Set a parameter value (body: {plugin_id, param_id, value})",
+            "POST /reload_project": "Reload the Carla project (optional body: {path})",
+            "POST /shutdown": "Shutdown the Carla engine"
+        }
+    })
+
 @app.route("/plugins", methods=["GET"])
 def list_plugins():
     """List all loaded plugins"""

@@ -3,14 +3,23 @@ import threading, time, socket
 from gpiozero import PWMLED, MCP3008
 from time import sleep
 from pythonosc.udp_client import SimpleUDPClient
+import sys
+import os
+
+# Add project root to path for config loader
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config_loader import get_osc_config
+
+# Load OSC configuration
+osc_cfg = get_osc_config()
+osc_ip = osc_cfg.get("ip", "127.0.0.1")
+osc_port = osc_cfg.get("udp_port", 28017)
+client = SimpleUDPClient(osc_ip, osc_port)
 
 pot1 = MCP3008(0)
 pot2 = MCP3008(1)
 pot3 = MCP3008(2)
 pot4 = MCP3008(3)
-osc_ip = "127.0.0.1"   # change if your OSC target is on another device
-osc_port = 5005        # Carlas OSC UDP port (make sure this matches Carla)
-client = SimpleUDPClient(osc_ip, osc_port)
 
 lastVal1=0
 lastVal2=0
