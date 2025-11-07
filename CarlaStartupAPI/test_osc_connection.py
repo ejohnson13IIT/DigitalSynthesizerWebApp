@@ -10,7 +10,7 @@ import os
 import time
 
 # Add project root to path for config loader
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config_loader import get_osc_config, get_carla_config
 
 # Load configuration
