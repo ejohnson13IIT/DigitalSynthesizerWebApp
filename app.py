@@ -2,13 +2,17 @@ from flask import Flask, render_template, jsonify
 from flask_socketio import SocketIO
 import socket
 from pythonosc.udp_client import SimpleUDPClient
+from config_loader import get_osc_config, get_flask_config
 
 app = Flask(__name__)
 
+# Load configuration
+osc_cfg = get_osc_config()
+flask_cfg = get_flask_config()
 
 socketio = SocketIO(app)
-osc_ip = "127.0.0.1"   # change if your OSC target is on another device
-osc_port = 5005       # Carlas OSC UDP port (make sure this matches Carla)
+osc_ip = osc_cfg.get("ip", "127.0.0.1")
+osc_port = osc_cfg.get("udp_port", 28017)
 client = SimpleUDPClient(osc_ip, osc_port)
 
 @app.route("/")
@@ -24,4 +28,7 @@ def handle_knob_change(data):
     client.send_message(sentMsg, [parameterID, (value/100)*48-24])
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=5000)
+    flask_host = flask_cfg.get("host", "0.0.0.0")
+    flask_port = flask_cfg.get("port", 5000)
+    flask_debug = flask_cfg.get("debug", False)
+    socketio.run(app, host=flask_host, port=flask_port, debug=flask_debug)

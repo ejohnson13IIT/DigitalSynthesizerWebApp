@@ -1,0 +1,49 @@
+# ============================================
+# Carla Setup for Raspbian (Raspberry Pi OS)
+# ============================================
+
+# Step 1: Disable PulseAudio (conflicts with JACK)
+# PulseAudio is typically running by default on Raspbian
+# Check if it's running:
+#   systemctl --user status pulseaudio
+#   ps aux | grep pulseaudio
+
+# Stop PulseAudio
+systemctl --user stop pulseaudio
+systemctl --user stop pulseaudio.socket
+
+# Prevent PulseAudio from auto-starting
+systemctl --user mask pulseaudio
+systemctl --user mask pulseaudio.socket
+
+# Note: If you have PipeWire instead (less common on Raspbian):
+#   systemctl --user stop pipewire pipewire-pulse
+#   systemctl --user mask pipewire pipewire-pulse
+
+# Step 2: Start JACK audio server
+jack_control start
+
+# Verify JACK is running:
+#   jack_control status
+
+# Step 3: Configure A2J MIDI bridge (for MIDI device access)
+a2jmidid -e &
+
+# Step 4: Verify setup
+# Check JACK is running: jack_control status
+# Check audio devices: jack_lsp
+# Check MIDI ports: a2jmidi -l
+
+# ============================================
+# Troubleshooting:
+# ============================================
+# If JACK fails to start:
+#   1. Check audio device: arecord -l (for input), aplay -l (for output)
+#   2. Check permissions: user should be in 'audio' group
+#   3. Check if another process is using audio: lsof | grep snd
+#   4. Try starting JACK manually: jackd -R -d alsa -d hw:0
+
+# To re-enable PulseAudio later (if needed):
+#   systemctl --user unmask pulseaudio pulseaudio.socket
+#   systemctl --user start pulseaudio
+

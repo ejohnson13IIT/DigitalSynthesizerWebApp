@@ -1,0 +1,64 @@
+# Digital Synthesizer Web App Configuration
+# This file contains all configuration settings for the application
+
+# ============================================
+# Carla Audio Engine Configuration
+# ============================================
+carla:
+  # Path to Carla library (standard Linux installation)
+  library_path: "/usr/lib/carla/libcarla_standalone2.so"
+  
+  # Path to Carla Python backend (standard Linux installation)
+  python_path: "/usr/share/carla"
+  
+  # Audio driver (JACK, ALSA, PulseAudio, Dummy)
+  audio_driver: "JACK"
+  
+  # JACK client name
+  client_name: "WebAppHost"
+  
+  # Project file path (relative to CarlaStartupAPI directory)
+  project_file: "defaultProj.carxp"
+
+# ============================================
+# OSC (Open Sound Control) Configuration
+# ============================================
+osc:
+  # OSC server IP address (where Carla is running)
+  ip: "127.0.0.1"
+  
+  # OSC UDP port (must match between Carla and OSC clients)
+  udp_port: 28017
+  
+  # OSC TCP port
+  tcp_port: 5004
+
+# ============================================
+# Flask Web Server Configuration
+# ============================================
+flask:
+  # Host to bind to (0.0.0.0 = all interfaces, 127.0.0.1 = localhost only)
+  host: "0.0.0.0"
+  
+  # Port for Flask web server
+  port: 5000
+  
+  # Debug mode (set to false in production)
+  debug: false
+
+# ============================================
+# Carla Startup API Configuration
+# ============================================
+carla_api:
+  # Host for Carla REST API server
+  host: "0.0.0.0"
+  
+  # Port for Carla REST API server
+  port: 8080
+
+# ============================================
+# Environment-specific overrides
+# ============================================
+# You can create config_local.yaml for local development overrides
+# Settings in config_local.yaml will override settings here
+

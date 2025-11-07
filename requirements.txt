@@ -1,0 +1,16 @@
+# Digital Synthesizer Web App Requirements
+
+# Web framework
+Flask>=2.0.0
+flask-socketio>=5.0.0
+
+# OSC (Open Sound Control) client
+python-osc>=1.8.0
+
+# Configuration file parsing
+PyYAML>=6.0
+
+# WebSocket support (for SocketIO)
+python-socketio>=5.0.0
+eventlet>=0.33.0
+

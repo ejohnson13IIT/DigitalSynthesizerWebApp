@@ -1,0 +1,17 @@
+# Local Development Configuration Override
+# Copy this file to config_local.yaml and customize for your local setup
+# Settings here will override config.yaml
+
+# Example: Override OSC port for local testing
+# osc:
+#   udp_port: 5005
+
+# Example: Use localhost only for Flask in development
+# flask:
+#   host: "127.0.0.1"
+#   debug: true
+
+# Example: Override Carla project file
+# carla:
+#   project_file: "my_custom_project.carxp"
+
