@@ -1,0 +1,17 @@
+{
+  "plugins": [
+    {
+      "id": "internal_sine",
+      "display_name": "Internal Sine Oscillator",
+      "description": "Carla built-in sine wave test generator.",
+      "backend_type": "PLUGIN_INTERNAL",
+      "category": "PLUGIN_CATEGORY_SYNTH",
+      "filename": "",
+      "name": "Sine",
+      "label": "Sine",
+      "unique_id": 0,
+      "options": []
+    }
+  ]
+}
+

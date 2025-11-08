@@ -99,6 +99,20 @@
         font-size: 1.2em;
       }
 
+      select {
+        padding: 8px 12px;
+        background: #333;
+        border: 2px solid #00ffcc;
+        border-radius: 5px;
+        color: #fff;
+        font-size: 1.05em;
+      }
+
+      select:focus {
+        outline: none;
+        border-color: #00ddaa;
+      }
+
       input[type="number"] {
         padding: 8px;
         width: 80px;
@@ -132,10 +146,24 @@
         font-size: 0.95em;
         color: #88fff0;
       }
+
+      .action-status {
+        margin-left: 10px;
+        font-size: 0.95em;
+        color: #ffde59;
+      }
     </style>
   </head>
   <body>
     <h1>Digital Synthesizer Control</h1>
+    <div class="control-panel">
+      <label for="pluginSelect">Add plugin from database:</label>
+      <select id="pluginSelect">
+        <option value="">Select a plugin…</option>
+      </select>
+      <button id="addPluginButton">Add Plugin</button>
+      <span id="pluginActionStatus" class="action-status"></span>
+    </div>
     <div id="statusMessage" class="status-message">Loading plugin data...</div>
     <div class="knobs-container" id="knobsContainer"></div>
 
@@ -146,6 +174,24 @@
       const KNOB_MAX_ANGLE = KNOB_MIN_ANGLE + KNOB_SWEEP_DEGREES;
       const knobState = new Map(); // key: `${pluginId}-${paramId}` => { normalized, raw }
       const DRAG_SENSITIVITY = 300; // pixels required for a full sweep
+      let availablePlugins = [];
+
+      const pluginSelect = document.getElementById('pluginSelect');
+      const addPluginButton = document.getElementById('addPluginButton');
+      const pluginActionStatus = document.getElementById('pluginActionStatus');
+      addPluginButton.addEventListener('click', handleAddPlugin);
+
+      function setPluginStatus(message, type = 'info') {
+        if (!pluginActionStatus) return;
+        pluginActionStatus.textContent = message || '';
+        let color = '#00ffcc';
+        if (type === 'error') {
+          color = '#ff6b6b';
+        } else if (type === 'success') {
+          color = '#8aff8a';
+        }
+        pluginActionStatus.style.color = color;
+      }
 
       function normalizeValue(value, min, max) {
         if (max <= min) {
@@ -334,8 +380,106 @@
         }
       }
 
+      async function loadPluginDatabase() {
+        if (!pluginSelect || !addPluginButton) {
+          return;
+        }
+
+        try {
+          setPluginStatus('Loading plugin database...', 'info');
+          const response = await fetch('/api/plugin-db');
+          if (!response.ok) {
+            throw new Error(`Server responded with ${response.status}`);
+          }
+          const data = await response.json();
+          availablePlugins = data.plugins || [];
+
+          pluginSelect.innerHTML = '';
+
+          if (availablePlugins.length === 0) {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'No plugins available';
+            pluginSelect.appendChild(option);
+            pluginSelect.disabled = true;
+            addPluginButton.disabled = true;
+            setPluginStatus('Plugin database is empty.', 'error');
+            return;
+          }
+
+          const placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = 'Select a plugin…';
+          pluginSelect.appendChild(placeholder);
+
+          availablePlugins.forEach((plugin) => {
+            const option = document.createElement('option');
+            option.value = plugin.id;
+            option.textContent = plugin.display_name || plugin.id;
+            if (plugin.description) {
+              option.title = plugin.description;
+            }
+            pluginSelect.appendChild(option);
+          });
+
+          pluginSelect.disabled = false;
+          addPluginButton.disabled = false;
+          setPluginStatus(`Loaded ${availablePlugins.length} plugin option(s).`, 'success');
+        } catch (error) {
+          console.error('Failed to load plugin database:', error);
+          pluginSelect.innerHTML = '';
+          const option = document.createElement('option');
+          option.value = '';
+          option.textContent = 'Failed to load plugin list';
+          pluginSelect.appendChild(option);
+          pluginSelect.disabled = true;
+          addPluginButton.disabled = true;
+          setPluginStatus('Failed to load plugin database. Ensure Carla API is running.', 'error');
+        }
+      }
+
+      async function handleAddPlugin() {
+        if (!pluginSelect) return;
+        const pluginId = pluginSelect.value;
+        if (!pluginId) {
+          setPluginStatus('Select a plugin before adding.', 'error');
+          return;
+        }
+
+        addPluginButton.disabled = true;
+        setPluginStatus('Adding plugin...', 'info');
+
+        try {
+          const response = await fetch('/api/plugins/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ plugin_id: pluginId }),
+          });
+          const data = await response.json();
+
+          if (!response.ok) {
+            const errorMessage = data.error || data.detail || `Server responded with ${response.status}`;
+            setPluginStatus(`Failed to add plugin: ${errorMessage}`, 'error');
+          } else {
+            const pluginName = data.plugin?.name || pluginId;
+            setPluginStatus(`Added plugin: ${pluginName}`, 'success');
+            await loadPlugins();
+          }
+        } catch (error) {
+          console.error('Failed to add plugin:', error);
+          setPluginStatus(`Failed to add plugin: ${error}`, 'error');
+        } finally {
+          addPluginButton.disabled = false;
+        }
+      }
+
+      async function initialize() {
+        await loadPluginDatabase();
+        await loadPlugins();
+      }
+
       window.addEventListener('DOMContentLoaded', () => {
-        loadPlugins();
+        initialize();
       });
     </script>
   </body>

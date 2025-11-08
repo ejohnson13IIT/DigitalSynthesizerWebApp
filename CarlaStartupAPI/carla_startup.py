@@ -1,17 +1,26 @@
 import sys
 import os
+import json
 import threading
 import time
+from typing import Any, Dict, List
 from flask import Flask, jsonify, request
 
 # Add project root to path for config loader
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config_loader import get_carla_config, get_osc_config, get_carla_api_config
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PROJECT_ROOT)
+from config_loader import (
+    get_carla_config,
+    get_osc_config,
+    get_carla_api_config,
+    get_plugin_database_config,
+)
 
 # Load configuration
 carla_cfg = get_carla_config()
 osc_cfg = get_osc_config()
 api_cfg = get_carla_api_config()
+plugin_db_cfg = get_plugin_database_config()
 
 # Add Carla Python backend to path
 sys.path.append(carla_cfg.get("python_path", "/usr/share/carla"))
@@ -66,6 +75,117 @@ if not loaded:
 print("Project loaded successfully!")
 print("Plugins in project:", host.get_current_plugin_count())
 
+# === Plugin Database Loading ===
+PLUGIN_DB_PATH = plugin_db_cfg.get("path")
+PLUGIN_DATABASE: List[Dict[str, Any]] = []
+
+BACKEND_TYPE_MAP = {
+    "PLUGIN_NONE": carla_backend.PLUGIN_NONE,
+    "NONE": carla_backend.PLUGIN_NONE,
+    "PLUGIN_INTERNAL": carla_backend.PLUGIN_INTERNAL,
+    "INTERNAL": carla_backend.PLUGIN_INTERNAL,
+    "PLUGIN_LADSPA": carla_backend.PLUGIN_LADSPA,
+    "LADSPA": carla_backend.PLUGIN_LADSPA,
+    "PLUGIN_DSSI": carla_backend.PLUGIN_DSSI,
+    "DSSI": carla_backend.PLUGIN_DSSI,
+    "PLUGIN_LV2": carla_backend.PLUGIN_LV2,
+    "LV2": carla_backend.PLUGIN_LV2,
+    "PLUGIN_VST2": carla_backend.PLUGIN_VST2,
+    "VST2": carla_backend.PLUGIN_VST2,
+    "PLUGIN_VST3": carla_backend.PLUGIN_VST3,
+    "VST3": carla_backend.PLUGIN_VST3,
+    "PLUGIN_SF2": carla_backend.PLUGIN_SF2,
+    "SF2": carla_backend.PLUGIN_SF2,
+    "PLUGIN_SFZ": carla_backend.PLUGIN_SFZ,
+    "SFZ": carla_backend.PLUGIN_SFZ,
+    "PLUGIN_JSFX": carla_backend.PLUGIN_JSFX,
+    "JSFX": carla_backend.PLUGIN_JSFX,
+    "PLUGIN_JACK": carla_backend.PLUGIN_JACK,
+    "JACK": carla_backend.PLUGIN_JACK,
+    "PLUGIN_CLAP": carla_backend.PLUGIN_CLAP,
+    "CLAP": carla_backend.PLUGIN_CLAP,
+}
+
+CATEGORY_MAP = {
+    "PLUGIN_CATEGORY_NONE": carla_backend.PLUGIN_CATEGORY_NONE,
+    "NONE": carla_backend.PLUGIN_CATEGORY_NONE,
+    "PLUGIN_CATEGORY_SYNTH": carla_backend.PLUGIN_CATEGORY_SYNTH,
+    "SYNTH": carla_backend.PLUGIN_CATEGORY_SYNTH,
+    "PLUGIN_CATEGORY_DELAY": carla_backend.PLUGIN_CATEGORY_DELAY,
+    "DELAY": carla_backend.PLUGIN_CATEGORY_DELAY,
+    "PLUGIN_CATEGORY_EQ": carla_backend.PLUGIN_CATEGORY_EQ,
+    "EQ": carla_backend.PLUGIN_CATEGORY_EQ,
+    "PLUGIN_CATEGORY_FILTER": carla_backend.PLUGIN_CATEGORY_FILTER,
+    "FILTER": carla_backend.PLUGIN_CATEGORY_FILTER,
+    "PLUGIN_CATEGORY_DISTORTION": carla_backend.PLUGIN_CATEGORY_DISTORTION,
+    "DISTORTION": carla_backend.PLUGIN_CATEGORY_DISTORTION,
+    "PLUGIN_CATEGORY_DYNAMICS": carla_backend.PLUGIN_CATEGORY_DYNAMICS,
+    "DYNAMICS": carla_backend.PLUGIN_CATEGORY_DYNAMICS,
+    "PLUGIN_CATEGORY_MODULATOR": carla_backend.PLUGIN_CATEGORY_MODULATOR,
+    "MODULATOR": carla_backend.PLUGIN_CATEGORY_MODULATOR,
+    "PLUGIN_CATEGORY_UTILITY": carla_backend.PLUGIN_CATEGORY_UTILITY,
+    "UTILITY": carla_backend.PLUGIN_CATEGORY_UTILITY,
+    "PLUGIN_CATEGORY_OTHER": carla_backend.PLUGIN_CATEGORY_OTHER,
+    "OTHER": carla_backend.PLUGIN_CATEGORY_OTHER,
+}
+
+OPTION_MAP = {
+    "PLUGIN_OPTION_FIXED_BUFFERS": carla_backend.PLUGIN_OPTION_FIXED_BUFFERS,
+    "PLUGIN_OPTION_FORCE_STEREO": carla_backend.PLUGIN_OPTION_FORCE_STEREO,
+    "PLUGIN_OPTION_MAP_PROGRAM_CHANGES": carla_backend.PLUGIN_OPTION_MAP_PROGRAM_CHANGES,
+    "PLUGIN_OPTION_USE_CHUNKS": carla_backend.PLUGIN_OPTION_USE_CHUNKS,
+    "PLUGIN_OPTION_SEND_CONTROL_CHANGES": carla_backend.PLUGIN_OPTION_SEND_CONTROL_CHANGES,
+    "PLUGIN_OPTION_SEND_CHANNEL_PRESSURE": carla_backend.PLUGIN_OPTION_SEND_CHANNEL_PRESSURE,
+    "PLUGIN_OPTION_SEND_NOTE_AFTERTOUCH": carla_backend.PLUGIN_OPTION_SEND_NOTE_AFTERTOUCH,
+    "PLUGIN_OPTION_SEND_PITCHBEND": carla_backend.PLUGIN_OPTION_SEND_PITCHBEND,
+    "PLUGIN_OPTION_SEND_ALL_SOUND_OFF": carla_backend.PLUGIN_OPTION_SEND_ALL_SOUND_OFF,
+    "PLUGIN_OPTION_SEND_PROGRAM_CHANGES": carla_backend.PLUGIN_OPTION_SEND_PROGRAM_CHANGES,
+    "PLUGIN_OPTION_SKIP_SENDING_NOTES": carla_backend.PLUGIN_OPTION_SKIP_SENDING_NOTES,
+}
+
+
+def _resolve_path(path_value: str) -> str:
+    """Resolve a config path relative to project root and expand user/home."""
+    if not path_value:
+        return ""
+    expanded = os.path.expanduser(path_value)
+    if os.path.isabs(expanded):
+        return expanded
+    return os.path.join(PROJECT_ROOT, expanded)
+
+
+def load_plugin_database() -> None:
+    """Load plugin database from configured path."""
+    global PLUGIN_DATABASE
+    if not PLUGIN_DB_PATH:
+        print("No plugin database path configured; plugin addition disabled.")
+        PLUGIN_DATABASE = []
+        return
+
+    db_path = _resolve_path(PLUGIN_DB_PATH)
+    if not os.path.exists(db_path):
+        print(f"Plugin database file not found at {db_path}; plugin addition disabled.")
+        PLUGIN_DATABASE = []
+        return
+
+    try:
+        with open(db_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        if isinstance(data, dict):
+            PLUGIN_DATABASE = data.get("plugins", [])
+        elif isinstance(data, list):
+            PLUGIN_DATABASE = data
+        else:
+            print(f"Unexpected plugin database format in {db_path}; expected list or dict.")
+            PLUGIN_DATABASE = []
+    except Exception as exc:
+        print(f"Failed to load plugin database from {db_path}: {exc}")
+        PLUGIN_DATABASE = []
+
+
+load_plugin_database()
+
 # === Keep the engine alive ===
 def idle_loop():
     """Keeps the Carla engine responsive."""
@@ -92,6 +212,8 @@ def index():
             "GET /plugins": "List all loaded plugins",
             "GET /plugins/<id>/parameters": "List parameters for a plugin",
             "POST /plugins/set_parameter": "Set a parameter value (body: {plugin_id, param_id, value})",
+            "GET /plugin-db": "List available plugins from configured database",
+            "POST /plugins/add": "Add a plugin from the database (body: {plugin_id})",
             "POST /reload_project": "Reload the Carla project (optional body: {path})",
             "POST /shutdown": "Shutdown the Carla engine"
         }
@@ -181,6 +303,111 @@ def reload_project():
         return jsonify({"status": True, "path": project_path})
     except Exception as e:
         return jsonify({"status": False, "error": str(e)}), 500
+
+@app.route("/plugin-db", methods=["GET"])
+def plugin_database():
+    """Return the configured plugin database entries."""
+    if not PLUGIN_DATABASE:
+        return jsonify({"plugins": [], "warning": "Plugin database not configured or empty."})
+
+    entries = []
+    for entry in PLUGIN_DATABASE:
+        entries.append({
+            "id": entry.get("id"),
+            "display_name": entry.get("display_name", entry.get("name", entry.get("label", "Unnamed Plugin"))),
+            "description": entry.get("description", ""),
+            "backend_type": entry.get("backend_type"),
+            "category": entry.get("category"),
+        })
+    return jsonify({"plugins": entries})
+
+
+def _normalize_backend_type(value: Any) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        key = value.strip().upper()
+        return BACKEND_TYPE_MAP.get(key, BACKEND_TYPE_MAP.get(f"PLUGIN_{key}", carla_backend.PLUGIN_NONE))
+    return carla_backend.PLUGIN_NONE
+
+
+def _normalize_category(value: Any) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        key = value.strip().upper()
+        return CATEGORY_MAP.get(key, CATEGORY_MAP.get(f"PLUGIN_CATEGORY_{key}", carla_backend.PLUGIN_CATEGORY_NONE))
+    return carla_backend.PLUGIN_CATEGORY_NONE
+
+
+def _normalize_options(options: Any) -> int:
+    if not options:
+        return 0
+    if isinstance(options, int):
+        return options
+    if isinstance(options, list):
+        bitmask = 0
+        for item in options:
+            if isinstance(item, int):
+                bitmask |= item
+            elif isinstance(item, str):
+                key = item.strip().upper()
+                bitmask |= OPTION_MAP.get(key, OPTION_MAP.get(f"PLUGIN_OPTION_{key}", 0))
+        return bitmask
+    return 0
+
+
+def _find_plugin_entry(plugin_id: str) -> Dict[str, Any]:
+    for entry in PLUGIN_DATABASE:
+        if entry.get("id") == plugin_id:
+            return entry
+    return {}
+
+
+@app.route("/plugins/add", methods=["POST"])
+def add_plugin():
+    """Add a new plugin from the plugin database to the current project."""
+    if not PLUGIN_DATABASE:
+        return jsonify({"error": "Plugin database not configured"}), 400
+
+    try:
+        data = request.get_json(force=True)
+        plugin_id = data.get("plugin_id")
+        if not plugin_id:
+            return jsonify({"error": "plugin_id is required"}), 400
+
+        entry = _find_plugin_entry(plugin_id)
+        if not entry:
+            return jsonify({"error": f"Plugin id '{plugin_id}' not found in database"}), 404
+
+        backend_type = _normalize_backend_type(entry.get("backend_type", carla_backend.PLUGIN_INTERNAL))
+        category = _normalize_category(entry.get("category", carla_backend.PLUGIN_CATEGORY_NONE))
+        filename = entry.get("filename", "") or ""
+        name = entry.get("name", "")
+        label = entry.get("label", "")
+        unique_id = int(entry.get("unique_id", 0))
+        options = _normalize_options(entry.get("options", []))
+
+        success = host.add_plugin(
+            backend_type,
+            category,
+            filename,
+            name,
+            label,
+            unique_id,
+            None,
+            options,
+        )
+
+        if not success:
+            error_msg = host.get_last_error() or "Unknown error while adding plugin"
+            return jsonify({"error": error_msg}), 500
+
+        new_plugin_index = host.get_current_plugin_count() - 1
+        plugin_info = host.get_plugin_info(new_plugin_index)
+        return jsonify({"status": "ok", "plugin": plugin_info, "plugin_id": new_plugin_index})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 @app.route("/shutdown", methods=["POST"])
 def shutdown():

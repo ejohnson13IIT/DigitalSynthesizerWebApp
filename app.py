@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO
 from pythonosc.udp_client import SimpleUDPClient
 from config_loader import (
@@ -74,6 +74,37 @@ def fetch_plugins():
         return jsonify({"error": "Failed to reach Carla API", "detail": str(err)}), 502
     except Exception as exc:
         logger.exception("Unexpected error while fetching plugins")
+        return jsonify({"error": "Unexpected server error", "detail": str(exc)}), 500
+
+
+@app.route("/api/plugin-db", methods=["GET"])
+def fetch_plugin_database():
+    """Fetch available plugins from the Carla API plugin database."""
+    try:
+        resp = requests.get(f"{carla_api_base}/plugin-db", timeout=5)
+        resp.raise_for_status()
+        return jsonify(resp.json())
+    except requests.exceptions.RequestException as err:
+        logger.error("Failed to fetch plugin database from Carla API: %s", err)
+        return jsonify({"error": "Failed to reach Carla API", "detail": str(err)}), 502
+    except Exception as exc:
+        logger.exception("Unexpected error while fetching plugin database")
+        return jsonify({"error": "Unexpected server error", "detail": str(exc)}), 500
+
+
+@app.route("/api/plugins/add", methods=["POST"])
+def proxy_add_plugin():
+    """Proxy request to add a plugin via the Carla API."""
+    try:
+        payload = request.get_json(force=True)
+        resp = requests.post(f"{carla_api_base}/plugins/add", json=payload, timeout=5)
+        content = resp.json() if resp.content else {}
+        return jsonify(content), resp.status_code
+    except requests.exceptions.RequestException as err:
+        logger.error("Failed to add plugin via Carla API: %s", err)
+        return jsonify({"error": "Failed to reach Carla API", "detail": str(err)}), 502
+    except Exception as exc:
+        logger.exception("Unexpected error while adding plugin")
         return jsonify({"error": "Unexpected server error", "detail": str(exc)}), 500
 
 @socketio.on("knob_change")

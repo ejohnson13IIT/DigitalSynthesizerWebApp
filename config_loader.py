@@ -89,3 +89,8 @@ def get_carla_api_config() -> Dict[str, Any]:
     """Get Carla API configuration"""
     return get_config().get("carla_api", {})
 
+
+def get_plugin_database_config() -> Dict[str, Any]:
+    """Get plugin database configuration"""
+    return get_config().get("plugin_database", {})
+

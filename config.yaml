@@ -57,6 +57,13 @@ carla_api:
   port: 8080
 
 # ============================================
+# Plugin Database Configuration
+# ============================================
+plugin_database:
+  # Path to plugin database definition (absolute or relative to project root)
+  path: "data/plugin_database.json"
+
+# ============================================
 # Environment-specific overrides
 # ============================================
 # You can create config_local.yaml for local development overrides
