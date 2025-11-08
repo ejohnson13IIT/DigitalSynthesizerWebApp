@@ -1,9 +1,14 @@
 from flask import Flask, render_template, jsonify
 from flask_socketio import SocketIO
-import socket
 from pythonosc.udp_client import SimpleUDPClient
-from config_loader import get_osc_config, get_flask_config, get_carla_config
+from config_loader import (
+    get_osc_config,
+    get_flask_config,
+    get_carla_config,
+    get_carla_api_config,
+)
 import logging
+import requests
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -15,6 +20,7 @@ app = Flask(__name__)
 osc_cfg = get_osc_config()
 flask_cfg = get_flask_config()
 carla_cfg = get_carla_config()
+carla_api_cfg = get_carla_api_config()
 
 socketio = SocketIO(app, cors_allowed_origins="*")
 osc_ip = osc_cfg.get("ip", "127.0.0.1")
@@ -26,20 +32,75 @@ carla_client_name = carla_cfg.get("client_name", "Carla")
 logger.info(f"OSC client configured: {osc_ip}:{osc_port}")
 logger.info(f"Carla client name: {carla_client_name}")
 
+# Prepare Carla API base URL (fallback to localhost if host is 0.0.0.0)
+raw_api_host = carla_api_cfg.get("host", "127.0.0.1")
+api_host = "127.0.0.1" if raw_api_host in ("0.0.0.0", "::") else raw_api_host
+api_port = carla_api_cfg.get("port", 8080)
+carla_api_base = f"http://{api_host}:{api_port}"
+logger.info(f"Carla API base URL: {carla_api_base}")
+
 @app.route("/")
 def index():
     return render_template("index.html")
+
+@app.route("/api/plugins", methods=["GET"])
+def fetch_plugins():
+    """Fetch plugins and their parameters from the Carla API."""
+    try:
+        plugins_resp = requests.get(f"{carla_api_base}/plugins", timeout=5)
+        plugins_resp.raise_for_status()
+        plugin_list = plugins_resp.json().get("plugins", [])
+
+        detailed_plugins = []
+        for plugin in plugin_list:
+            plugin_id = plugin.get("id")
+            if plugin_id is None:
+                continue
+
+            params_resp = requests.get(
+                f"{carla_api_base}/plugins/{plugin_id}/parameters", timeout=5
+            )
+            params_resp.raise_for_status()
+            parameters = params_resp.json().get("parameters", [])
+            plugin_with_params = {
+                **plugin,
+                "parameters": parameters,
+            }
+            detailed_plugins.append(plugin_with_params)
+
+        return jsonify({"plugins": detailed_plugins})
+    except requests.exceptions.RequestException as err:
+        logger.error("Failed to fetch plugin metadata from Carla API: %s", err)
+        return jsonify({"error": "Failed to reach Carla API", "detail": str(err)}), 502
+    except Exception as exc:
+        logger.exception("Unexpected error while fetching plugins")
+        return jsonify({"error": "Unexpected server error", "detail": str(exc)}), 500
 
 @socketio.on("knob_change")
 def handle_knob_change(data):
     try:
         parameterID = data["knob"]
-        value = data["value"]
+        normalized_value = float(data["value"])
+        display_value = data.get("displayValue")
         rackID = data["rack"]
         sentMsg = f"/{carla_client_name}/{rackID}/set_parameter_value"
-        osc_value = (value/100)*48-24
-        client.send_message(sentMsg, [parameterID, osc_value])
-        logger.info(f"OSC sent: {sentMsg} [{parameterID}, {osc_value:.2f}] (from web value: {value})")
+        client.send_message(sentMsg, [parameterID, normalized_value])
+
+        if display_value is not None:
+            logger.info(
+                "OSC sent: %s [%s, %.4f] (display value: %s)",
+                sentMsg,
+                parameterID,
+                normalized_value,
+                display_value,
+            )
+        else:
+            logger.info(
+                "OSC sent: %s [%s, %.4f]",
+                sentMsg,
+                parameterID,
+                normalized_value,
+            )
     except Exception as e:
         logger.error(f"Error in handle_knob_change: {e}")
 

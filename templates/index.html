@@ -120,139 +120,219 @@
         -webkit-appearance: none;
         margin: 0;
       }
+
+      .status-message {
+        margin: 15px;
+        font-size: 1.1em;
+        color: #00ffcc;
+      }
+
+      .range-display {
+        margin-top: 6px;
+        font-size: 0.95em;
+        color: #88fff0;
+      }
     </style>
   </head>
   <body>
     <h1>Digital Synthesizer Control</h1>
-    <div class="control-panel">
-      <label for="knobCount">Number of knobs:</label>
-      <input type="number" id="knobCount" min="1" max="16" value="4">
-      <button onclick="addRack()">Add New Rack</button>
-    </div>
+    <div id="statusMessage" class="status-message">Loading plugin data...</div>
     <div class="knobs-container" id="knobsContainer"></div>
 
     <script>
-      // Connect to Socket.IO on the same server (relative URL)
       const socket = io();
-      let knobCount = 0;
-      let rackCount = 0;
+      const KNOB_SWEEP_DEGREES = 270;
+      const KNOB_MIN_ANGLE = -135;
+      const KNOB_MAX_ANGLE = KNOB_MIN_ANGLE + KNOB_SWEEP_DEGREES;
+      const knobState = new Map(); // key: `${pluginId}-${paramId}` => { normalized, raw }
 
-      function createRack(numKnobs) {
+      function normalizeValue(value, min, max) {
+        if (max <= min) {
+          return 0;
+        }
+        return (value - min) / (max - min);
+      }
+
+      function denormalizeValue(normalized, min, max) {
+        if (max <= min) {
+          return min;
+        }
+        return min + normalized * (max - min);
+      }
+
+      function angleFromNormalized(normalized) {
+        return KNOB_MIN_ANGLE + normalized * KNOB_SWEEP_DEGREES;
+      }
+
+      function normalizedFromAngle(angle) {
+        let clamped = Math.max(KNOB_MIN_ANGLE, Math.min(KNOB_MAX_ANGLE, angle));
+        return (clamped - KNOB_MIN_ANGLE) / KNOB_SWEEP_DEGREES;
+      }
+
+      function formatValue(value) {
+        if (Math.abs(value) >= 100 || Math.abs(value) < 0.01) {
+          return value.toExponential(2);
+        }
+        return value.toFixed(3).replace(/\.?0+$/, '');
+      }
+
+      function createRack(plugin) {
         const rack = document.createElement('div');
         rack.className = 'rack';
-        rack.id = `rack-${rackCount}`;
-        
-        for (let i = 0; i < numKnobs; i++) {
-          const knob = createKnob(rackCount, i);
+        rack.dataset.pluginId = plugin.id;
+
+        const header = document.createElement('h2');
+        header.textContent = `${plugin.name || 'Plugin'} (ID ${plugin.id})`;
+        rack.appendChild(header);
+
+        plugin.parameters.forEach((param) => {
+          const knob = createKnob(plugin.id, param);
           rack.appendChild(knob);
-        }
-        
+        });
+
         return rack;
       }
 
-      function addRack() {
-        const knobInput = document.getElementById('knobCount');
-        const numKnobs = parseInt(knobInput.value);
-        if (numKnobs && !isNaN(numKnobs) && numKnobs > 0 && numKnobs <= 16) {
-          const container = document.getElementById('knobsContainer');
-          const newRack = createRack(numKnobs);
-          container.appendChild(newRack);
-          rackCount++;
-        }
-      }
-
-      function createKnob(rackIndex, knobIndex) {
+      function createKnob(pluginId, param) {
         const wrapper = document.createElement('div');
         wrapper.className = 'knob-wrapper';
         
         const label = document.createElement('label');
-        // Number knobs starting at 1 within each rack
-        label.textContent = `Parameter ${knobIndex + 1}`;
+        const paramName = param.name || `Parameter ${param.id}`;
+        label.textContent = paramName;
         
         const knob = document.createElement('div');
         knob.className = 'knob';
-        // Use per-rack id for easier debugging: rack-<r>-knob-<k>
-        knob.id = `rack-${rackIndex}-knob-${knobIndex}`;
+        knob.id = `rack-${pluginId}-knob-${param.id}`;
         
         const valueDisplay = document.createElement('div');
         valueDisplay.className = 'value-display';
-        valueDisplay.textContent = 'Value: 50';
+        valueDisplay.textContent = `Value: ${formatValue(param.value)}`;
+
+        const rangeDisplay = document.createElement('div');
+        rangeDisplay.className = 'range-display';
+        rangeDisplay.textContent = `Range: ${formatValue(param.min)} – ${formatValue(param.max)}`;
         
         wrapper.appendChild(label);
         wrapper.appendChild(knob);
         wrapper.appendChild(valueDisplay);
+        wrapper.appendChild(rangeDisplay);
         
-        let value = 50;
-        let previousValue = 50;
-        let rotating = false;
-        let startAngle;
+        let isDragging = false;
+
+        function updateKnobUI(normalizedValue) {
+          const clamped = Math.max(0, Math.min(1, normalizedValue));
+          const angle = angleFromNormalized(clamped);
+          knob.style.transform = `rotate(${angle}deg)`;
+          const rawValue = denormalizeValue(clamped, param.min, param.max);
+          valueDisplay.textContent = `Value: ${formatValue(rawValue)}`;
+
+          const stateKey = `${pluginId}-${param.id}`;
+          const previous = knobState.get(stateKey);
+
+          if (!previous || Math.abs(previous.normalized - clamped) > 0.001) {
+            knobState.set(stateKey, { normalized: clamped, raw: rawValue });
+            socket.emit('knob_change', {
+              rack: pluginId,
+              knob: param.id,
+              value: clamped,
+              displayValue: rawValue,
+            });
+            console.log(`📤 Rack ${pluginId} Param ${param.id} -> ${rawValue} (norm ${clamped.toFixed(3)})`);
+          }
+        }
         
         function rotateKnob(e) {
-          if (!rotating) return;
+          if (!isDragging) return;
           
           const knobRect = knob.getBoundingClientRect();
-          const knobCenter = {
-            x: knobRect.left + knobRect.width / 2,
-            y: knobRect.top + knobRect.height / 2
-          };
-          
+          const centerX = knobRect.left + knobRect.width / 2;
+          const centerY = knobRect.top + knobRect.height / 2;
+
           const angle = Math.atan2(
-            e.clientY - knobCenter.y,
-            e.clientX - knobCenter.x
+            centerY - e.clientY,
+            e.clientX - centerX
           ) * 180 / Math.PI;
-          
-          let rotation = angle - startAngle;
-          if (rotation < 0) rotation += 360;
-          
-          value = Math.round((rotation / 360) * 100);
-          value = Math.max(0, Math.min(100, value));
-          
-          knob.style.transform = `rotate(${rotation}deg)`;
-          valueDisplay.textContent = `Value: ${value}`;
-          
-            if (value !== previousValue) {
-              // Emit rack and knob indices (0-based) and the value
-              socket.emit('knob_change', { rack: rackIndex, knob: knobIndex, value: value });
-              console.log(`Rack ${rackIndex} Knob ${knobIndex} Value: ${value}`);
-              previousValue = value;
-            }
+
+          const normalized = normalizedFromAngle(angle);
+          updateKnobUI(normalized);
         }
         
         knob.addEventListener('mousedown', (e) => {
-          rotating = true;
-          const knobRect = knob.getBoundingClientRect();
-          const knobCenter = {
-            x: knobRect.left + knobRect.width / 2,
-            y: knobRect.top + knobRect.height / 2
-          };
-          startAngle = Math.atan2(
-            e.clientY - knobCenter.y,
-            e.clientX - knobCenter.x
-          ) * 180 / Math.PI;
+          e.preventDefault();
+          isDragging = true;
           document.addEventListener('mousemove', rotateKnob);
-        });
+        }, { passive: false });
+
+        knob.addEventListener('touchstart', (e) => {
+          isDragging = true;
+          document.addEventListener('touchmove', handleTouchMove, { passive: false });
+        }, { passive: false });
+
+        function handleTouchMove(e) {
+          if (!isDragging) return;
+          const touch = e.touches[0];
+          const simulatedEvent = {
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+          };
+          rotateKnob(simulatedEvent);
+          e.preventDefault();
+        }
         
-        document.addEventListener('mouseup', () => {
-          rotating = false;
-          document.removeEventListener('mousemove', rotateKnob);
-        });
-        
+        function endInteraction() {
+          if (isDragging) {
+            isDragging = false;
+            document.removeEventListener('mousemove', rotateKnob);
+            document.removeEventListener('touchmove', handleTouchMove);
+          }
+        }
+
+        document.addEventListener('touchend', endInteraction);
+        document.addEventListener('touchcancel', endInteraction);
+        document.addEventListener('mouseup', endInteraction);
+
+        // Initialize position
+        const initialNormalized = normalizeValue(param.value, param.min, param.max);
+        knob.style.transform = `rotate(${angleFromNormalized(initialNormalized)}deg)`;
+
         return wrapper;
       }
 
-      // NOTE: addKnob kept for legacy but creates a single-rack single-knob as a convenience
-      function addKnob() {
+      async function loadPlugins() {
+        const statusMessage = document.getElementById('statusMessage');
         const container = document.getElementById('knobsContainer');
-        const newRack = createRack(1);
-        container.appendChild(newRack);
-        rackCount++;
+
+        try {
+          statusMessage.textContent = 'Loading plugin data...';
+          const response = await fetch('/api/plugins');
+          if (!response.ok) {
+            throw new Error(`Server responded with ${response.status}`);
+          }
+          const data = await response.json();
+          const plugins = data.plugins || [];
+
+          container.innerHTML = '';
+          if (plugins.length === 0) {
+            statusMessage.textContent = 'No plugins loaded from Carla.';
+            return;
+          }
+
+          plugins.forEach((plugin) => {
+            const rack = createRack(plugin);
+            container.appendChild(rack);
+          });
+
+          statusMessage.textContent = `Loaded ${plugins.length} plugin(s) from Carla.`;
+        } catch (error) {
+          console.error('Failed to load plugin metadata:', error);
+          statusMessage.textContent = 'Failed to load plugin data. Ensure Carla API is running.';
+        }
       }
 
-      // Create initial rack with 4 knobs
-  const container = document.getElementById('knobsContainer');
-  const initialRack = createRack(6);
-  container.appendChild(initialRack);
-  rackCount++;
+      window.addEventListener('DOMContentLoaded', () => {
+        loadPlugins();
+      });
     </script>
   </body>
 </html>
