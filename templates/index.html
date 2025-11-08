@@ -145,6 +145,7 @@
       const KNOB_MIN_ANGLE = -135;
       const KNOB_MAX_ANGLE = KNOB_MIN_ANGLE + KNOB_SWEEP_DEGREES;
       const knobState = new Map(); // key: `${pluginId}-${paramId}` => { normalized, raw }
+      const DRAG_SENSITIVITY = 300; // pixels required for a full sweep
 
       function normalizeValue(value, min, max) {
         if (max <= min) {
@@ -219,65 +220,69 @@
         wrapper.appendChild(rangeDisplay);
         
         let isDragging = false;
+        let currentNormalized = normalizeValue(param.value, param.min, param.max);
+        const stateKey = `${pluginId}-${param.id}`;
+        knobState.set(stateKey, { normalized: currentNormalized, raw: param.value });
+        let dragStartY = 0;
+        let dragStartNormalized = currentNormalized;
 
-        function updateKnobUI(normalizedValue) {
+        function updateKnobUI(normalizedValue, emit = true) {
           const clamped = Math.max(0, Math.min(1, normalizedValue));
+          currentNormalized = clamped;
           const angle = angleFromNormalized(clamped);
           knob.style.transform = `rotate(${angle}deg)`;
           const rawValue = denormalizeValue(clamped, param.min, param.max);
           valueDisplay.textContent = `Value: ${formatValue(rawValue)}`;
 
-          const stateKey = `${pluginId}-${param.id}`;
-          const previous = knobState.get(stateKey);
+          if (emit) {
+            const previous = knobState.get(stateKey);
 
-          if (!previous || Math.abs(previous.normalized - clamped) > 0.001) {
-            knobState.set(stateKey, { normalized: clamped, raw: rawValue });
-            socket.emit('knob_change', {
-              rack: pluginId,
-              knob: param.id,
-              value: clamped,
-              displayValue: rawValue,
-            });
-            console.log(`📤 Rack ${pluginId} Param ${param.id} -> ${rawValue} (norm ${clamped.toFixed(3)})`);
+            if (!previous || Math.abs(previous.normalized - clamped) > 0.001) {
+              knobState.set(stateKey, { normalized: clamped, raw: rawValue });
+              socket.emit('knob_change', {
+                rack: pluginId,
+                knob: param.id,
+                value: clamped,
+                displayValue: rawValue,
+              });
+              console.log(`📤 Rack ${pluginId} Param ${param.id} -> ${rawValue} (norm ${clamped.toFixed(3)})`);
+            }
           }
         }
         
-        function rotateKnob(e) {
+        function handleDrag(clientY) {
           if (!isDragging) return;
-          
-          const knobRect = knob.getBoundingClientRect();
-          const centerX = knobRect.left + knobRect.width / 2;
-          const centerY = knobRect.top + knobRect.height / 2;
-
-          const angle = Math.atan2(
-            centerY - e.clientY,
-            e.clientX - centerX
-          ) * 180 / Math.PI;
-
-          const normalized = normalizedFromAngle(angle);
+          const deltaPixels = dragStartY - clientY;
+          const normalizedDelta = deltaPixels / DRAG_SENSITIVITY;
+          const normalized = dragStartNormalized + normalizedDelta;
           updateKnobUI(normalized);
         }
         
         knob.addEventListener('mousedown', (e) => {
           e.preventDefault();
           isDragging = true;
+          dragStartY = e.clientY;
+          dragStartNormalized = currentNormalized;
           document.addEventListener('mousemove', rotateKnob);
         }, { passive: false });
 
         knob.addEventListener('touchstart', (e) => {
           isDragging = true;
+          const touch = e.touches[0];
+          dragStartY = touch.clientY;
+          dragStartNormalized = currentNormalized;
           document.addEventListener('touchmove', handleTouchMove, { passive: false });
         }, { passive: false });
 
         function handleTouchMove(e) {
           if (!isDragging) return;
           const touch = e.touches[0];
-          const simulatedEvent = {
-            clientX: touch.clientX,
-            clientY: touch.clientY,
-          };
-          rotateKnob(simulatedEvent);
+          handleDrag(touch.clientY);
           e.preventDefault();
+        }
+
+        function rotateKnob(e) {
+          handleDrag(e.clientY);
         }
         
         function endInteraction() {
@@ -293,8 +298,7 @@
         document.addEventListener('mouseup', endInteraction);
 
         // Initialize position
-        const initialNormalized = normalizeValue(param.value, param.min, param.max);
-        knob.style.transform = `rotate(${angleFromNormalized(initialNormalized)}deg)`;
+        updateKnobUI(currentNormalized, false);
 
         return wrapper;
       }
