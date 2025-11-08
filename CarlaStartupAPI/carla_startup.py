@@ -24,14 +24,17 @@ plugin_db_cfg = get_plugin_database_config()
 
 # Add Carla Python backend to path
 sys.path.append(carla_cfg.get("python_path", "/usr/share/carla"))
-import carla_backend
+
+try:
+    import carla_backend  # type: ignore
+except ImportError as exc:  # pragma: no cover
+    print(f"Failed to import carla_backend: {exc}")
+    raise
 
 # Import ENGINE_OPTION constants for better code clarity
-from carla_backend import (
-    ENGINE_OPTION_OSC_ENABLED,
-    ENGINE_OPTION_OSC_PORT_TCP,
-    ENGINE_OPTION_OSC_PORT_UDP
-)
+ENGINE_OPTION_OSC_ENABLED = getattr(carla_backend, "ENGINE_OPTION_OSC_ENABLED", 0)
+ENGINE_OPTION_OSC_PORT_TCP = getattr(carla_backend, "ENGINE_OPTION_OSC_PORT_TCP", 0)
+ENGINE_OPTION_OSC_PORT_UDP = getattr(carla_backend, "ENGINE_OPTION_OSC_PORT_UDP", 0)
 
 # === Configuration ===
 LIB_PATH = carla_cfg.get("library_path", "/usr/lib/carla/libcarla_standalone2.so")
@@ -75,72 +78,87 @@ if not loaded:
 print("Project loaded successfully!")
 print("Plugins in project:", host.get_current_plugin_count())
 
+
+def _maybe_attr(module: Any, name: str, fallback: Any = None) -> Any:
+    """Safely fetch an attribute from a module, returning fallback if missing."""
+    if fallback is None:
+        fallback = getattr(module, "PLUGIN_NONE", 0)
+    return getattr(module, name, fallback)
+
+
+def _maybe_option(module: Any, name: str) -> int:
+    """Safely fetch plugin option constants, defaulting to 0."""
+    return getattr(module, name, 0)
+
+
 # === Plugin Database Loading ===
 PLUGIN_DB_PATH = plugin_db_cfg.get("path")
 PLUGIN_DATABASE: List[Dict[str, Any]] = []
 
 BACKEND_TYPE_MAP = {
-    "PLUGIN_NONE": carla_backend.PLUGIN_NONE,
-    "NONE": carla_backend.PLUGIN_NONE,
-    "PLUGIN_INTERNAL": carla_backend.PLUGIN_INTERNAL,
-    "INTERNAL": carla_backend.PLUGIN_INTERNAL,
-    "PLUGIN_LADSPA": carla_backend.PLUGIN_LADSPA,
-    "LADSPA": carla_backend.PLUGIN_LADSPA,
-    "PLUGIN_DSSI": carla_backend.PLUGIN_DSSI,
-    "DSSI": carla_backend.PLUGIN_DSSI,
-    "PLUGIN_LV2": carla_backend.PLUGIN_LV2,
-    "LV2": carla_backend.PLUGIN_LV2,
-    "PLUGIN_VST2": carla_backend.PLUGIN_VST2,
-    "VST2": carla_backend.PLUGIN_VST2,
-    "PLUGIN_VST3": carla_backend.PLUGIN_VST3,
-    "VST3": carla_backend.PLUGIN_VST3,
-    "PLUGIN_SF2": carla_backend.PLUGIN_SF2,
-    "SF2": carla_backend.PLUGIN_SF2,
-    "PLUGIN_SFZ": carla_backend.PLUGIN_SFZ,
-    "SFZ": carla_backend.PLUGIN_SFZ,
-    "PLUGIN_JSFX": carla_backend.PLUGIN_JSFX,
-    "JSFX": carla_backend.PLUGIN_JSFX,
-    "PLUGIN_JACK": carla_backend.PLUGIN_JACK,
-    "JACK": carla_backend.PLUGIN_JACK,
-    "PLUGIN_CLAP": carla_backend.PLUGIN_CLAP,
-    "CLAP": carla_backend.PLUGIN_CLAP,
+    "PLUGIN_NONE": _maybe_attr(carla_backend, "PLUGIN_NONE", 0),
+    "NONE": _maybe_attr(carla_backend, "PLUGIN_NONE", 0),
+    "PLUGIN_INTERNAL": _maybe_attr(carla_backend, "PLUGIN_INTERNAL"),
+    "INTERNAL": _maybe_attr(carla_backend, "PLUGIN_INTERNAL"),
+    "PLUGIN_LADSPA": _maybe_attr(carla_backend, "PLUGIN_LADSPA"),
+    "LADSPA": _maybe_attr(carla_backend, "PLUGIN_LADSPA"),
+    "PLUGIN_DSSI": _maybe_attr(carla_backend, "PLUGIN_DSSI"),
+    "DSSI": _maybe_attr(carla_backend, "PLUGIN_DSSI"),
+    "PLUGIN_LV2": _maybe_attr(carla_backend, "PLUGIN_LV2"),
+    "LV2": _maybe_attr(carla_backend, "PLUGIN_LV2"),
+    "PLUGIN_VST2": _maybe_attr(carla_backend, "PLUGIN_VST2"),
+    "VST2": _maybe_attr(carla_backend, "PLUGIN_VST2"),
+    "PLUGIN_VST3": _maybe_attr(carla_backend, "PLUGIN_VST3"),
+    "VST3": _maybe_attr(carla_backend, "PLUGIN_VST3"),
+    "PLUGIN_AU": _maybe_attr(carla_backend, "PLUGIN_AU"),
+    "AU": _maybe_attr(carla_backend, "PLUGIN_AU"),
+    "PLUGIN_SF2": _maybe_attr(carla_backend, "PLUGIN_SF2"),
+    "SF2": _maybe_attr(carla_backend, "PLUGIN_SF2"),
+    "PLUGIN_SFZ": _maybe_attr(carla_backend, "PLUGIN_SFZ"),
+    "SFZ": _maybe_attr(carla_backend, "PLUGIN_SFZ"),
+    "PLUGIN_JSFX": _maybe_attr(carla_backend, "PLUGIN_JSFX"),
+    "JSFX": _maybe_attr(carla_backend, "PLUGIN_JSFX"),
+    "PLUGIN_JACK": _maybe_attr(carla_backend, "PLUGIN_JACK"),
+    "JACK": _maybe_attr(carla_backend, "PLUGIN_JACK"),
+    "PLUGIN_CLAP": _maybe_attr(carla_backend, "PLUGIN_CLAP"),
+    "CLAP": _maybe_attr(carla_backend, "PLUGIN_CLAP"),
 }
 
 CATEGORY_MAP = {
-    "PLUGIN_CATEGORY_NONE": carla_backend.PLUGIN_CATEGORY_NONE,
-    "NONE": carla_backend.PLUGIN_CATEGORY_NONE,
-    "PLUGIN_CATEGORY_SYNTH": carla_backend.PLUGIN_CATEGORY_SYNTH,
-    "SYNTH": carla_backend.PLUGIN_CATEGORY_SYNTH,
-    "PLUGIN_CATEGORY_DELAY": carla_backend.PLUGIN_CATEGORY_DELAY,
-    "DELAY": carla_backend.PLUGIN_CATEGORY_DELAY,
-    "PLUGIN_CATEGORY_EQ": carla_backend.PLUGIN_CATEGORY_EQ,
-    "EQ": carla_backend.PLUGIN_CATEGORY_EQ,
-    "PLUGIN_CATEGORY_FILTER": carla_backend.PLUGIN_CATEGORY_FILTER,
-    "FILTER": carla_backend.PLUGIN_CATEGORY_FILTER,
-    "PLUGIN_CATEGORY_DISTORTION": carla_backend.PLUGIN_CATEGORY_DISTORTION,
-    "DISTORTION": carla_backend.PLUGIN_CATEGORY_DISTORTION,
-    "PLUGIN_CATEGORY_DYNAMICS": carla_backend.PLUGIN_CATEGORY_DYNAMICS,
-    "DYNAMICS": carla_backend.PLUGIN_CATEGORY_DYNAMICS,
-    "PLUGIN_CATEGORY_MODULATOR": carla_backend.PLUGIN_CATEGORY_MODULATOR,
-    "MODULATOR": carla_backend.PLUGIN_CATEGORY_MODULATOR,
-    "PLUGIN_CATEGORY_UTILITY": carla_backend.PLUGIN_CATEGORY_UTILITY,
-    "UTILITY": carla_backend.PLUGIN_CATEGORY_UTILITY,
-    "PLUGIN_CATEGORY_OTHER": carla_backend.PLUGIN_CATEGORY_OTHER,
-    "OTHER": carla_backend.PLUGIN_CATEGORY_OTHER,
+    "PLUGIN_CATEGORY_NONE": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_NONE", 0),
+    "NONE": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_NONE", 0),
+    "PLUGIN_CATEGORY_SYNTH": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_SYNTH", 0),
+    "SYNTH": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_SYNTH", 0),
+    "PLUGIN_CATEGORY_DELAY": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_DELAY", 0),
+    "DELAY": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_DELAY", 0),
+    "PLUGIN_CATEGORY_EQ": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_EQ", 0),
+    "EQ": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_EQ", 0),
+    "PLUGIN_CATEGORY_FILTER": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_FILTER", 0),
+    "FILTER": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_FILTER", 0),
+    "PLUGIN_CATEGORY_DISTORTION": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_DISTORTION", 0),
+    "DISTORTION": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_DISTORTION", 0),
+    "PLUGIN_CATEGORY_DYNAMICS": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_DYNAMICS", 0),
+    "DYNAMICS": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_DYNAMICS", 0),
+    "PLUGIN_CATEGORY_MODULATOR": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_MODULATOR", 0),
+    "MODULATOR": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_MODULATOR", 0),
+    "PLUGIN_CATEGORY_UTILITY": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_UTILITY", 0),
+    "UTILITY": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_UTILITY", 0),
+    "PLUGIN_CATEGORY_OTHER": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_OTHER", 0),
+    "OTHER": _maybe_attr(carla_backend, "PLUGIN_CATEGORY_OTHER", 0),
 }
 
 OPTION_MAP = {
-    "PLUGIN_OPTION_FIXED_BUFFERS": carla_backend.PLUGIN_OPTION_FIXED_BUFFERS,
-    "PLUGIN_OPTION_FORCE_STEREO": carla_backend.PLUGIN_OPTION_FORCE_STEREO,
-    "PLUGIN_OPTION_MAP_PROGRAM_CHANGES": carla_backend.PLUGIN_OPTION_MAP_PROGRAM_CHANGES,
-    "PLUGIN_OPTION_USE_CHUNKS": carla_backend.PLUGIN_OPTION_USE_CHUNKS,
-    "PLUGIN_OPTION_SEND_CONTROL_CHANGES": carla_backend.PLUGIN_OPTION_SEND_CONTROL_CHANGES,
-    "PLUGIN_OPTION_SEND_CHANNEL_PRESSURE": carla_backend.PLUGIN_OPTION_SEND_CHANNEL_PRESSURE,
-    "PLUGIN_OPTION_SEND_NOTE_AFTERTOUCH": carla_backend.PLUGIN_OPTION_SEND_NOTE_AFTERTOUCH,
-    "PLUGIN_OPTION_SEND_PITCHBEND": carla_backend.PLUGIN_OPTION_SEND_PITCHBEND,
-    "PLUGIN_OPTION_SEND_ALL_SOUND_OFF": carla_backend.PLUGIN_OPTION_SEND_ALL_SOUND_OFF,
-    "PLUGIN_OPTION_SEND_PROGRAM_CHANGES": carla_backend.PLUGIN_OPTION_SEND_PROGRAM_CHANGES,
-    "PLUGIN_OPTION_SKIP_SENDING_NOTES": carla_backend.PLUGIN_OPTION_SKIP_SENDING_NOTES,
+    "PLUGIN_OPTION_FIXED_BUFFERS": _maybe_option(carla_backend, "PLUGIN_OPTION_FIXED_BUFFERS"),
+    "PLUGIN_OPTION_FORCE_STEREO": _maybe_option(carla_backend, "PLUGIN_OPTION_FORCE_STEREO"),
+    "PLUGIN_OPTION_MAP_PROGRAM_CHANGES": _maybe_option(carla_backend, "PLUGIN_OPTION_MAP_PROGRAM_CHANGES"),
+    "PLUGIN_OPTION_USE_CHUNKS": _maybe_option(carla_backend, "PLUGIN_OPTION_USE_CHUNKS"),
+    "PLUGIN_OPTION_SEND_CONTROL_CHANGES": _maybe_option(carla_backend, "PLUGIN_OPTION_SEND_CONTROL_CHANGES"),
+    "PLUGIN_OPTION_SEND_CHANNEL_PRESSURE": _maybe_option(carla_backend, "PLUGIN_OPTION_SEND_CHANNEL_PRESSURE"),
+    "PLUGIN_OPTION_SEND_NOTE_AFTERTOUCH": _maybe_option(carla_backend, "PLUGIN_OPTION_SEND_NOTE_AFTERTOUCH"),
+    "PLUGIN_OPTION_SEND_PITCHBEND": _maybe_option(carla_backend, "PLUGIN_OPTION_SEND_PITCHBEND"),
+    "PLUGIN_OPTION_SEND_ALL_SOUND_OFF": _maybe_option(carla_backend, "PLUGIN_OPTION_SEND_ALL_SOUND_OFF"),
+    "PLUGIN_OPTION_SEND_PROGRAM_CHANGES": _maybe_option(carla_backend, "PLUGIN_OPTION_SEND_PROGRAM_CHANGES"),
+    "PLUGIN_OPTION_SKIP_SENDING_NOTES": _maybe_option(carla_backend, "PLUGIN_OPTION_SKIP_SENDING_NOTES"),
 }
 
 
