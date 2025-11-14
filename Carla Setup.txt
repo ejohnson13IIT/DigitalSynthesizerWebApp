@@ -23,6 +23,9 @@ systemctl --user mask pulseaudio.socket
 # Step 2: Start JACK audio server
 jackd -dalsa -dhw:3 -r44100 -p1024 -n2 -S &
 
+#To Kill
+killall jackd
+
 # Verify JACK is running:
 #   jack_control status
 
