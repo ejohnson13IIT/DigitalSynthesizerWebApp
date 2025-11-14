@@ -268,8 +268,8 @@ def list_parameters(plugin_id):
             params.append({
                 "id": pid,
                 "name": pinfo.get("name", "") if pinfo else "",
-                "min": prange.get("minimum", 0.0) if prange else 0.0,
-                "max": prange.get("maximum", 1.0) if prange else 1.0,
+                "min": prange.get("min", 0.0) if prange else 0.0,
+                "max": prange.get("max", 1.0) if prange else 1.0,
                 "value": value
             })
         return jsonify({"plugin_id": plugin_id, "parameters": params})
