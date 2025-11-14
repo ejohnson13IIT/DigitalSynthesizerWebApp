@@ -113,24 +113,37 @@ def handle_knob_change(data):
         parameterID = data["knob"]
         normalized_value = float(data["value"])
         display_value = data.get("displayValue")
+
+        if display_value is not None:
+            try:
+                value_to_send = float(display_value)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Invalid displayValue %s for parameter %s; falling back to normalized value",
+                    display_value,
+                    parameterID,
+                )
+                value_to_send = normalized_value
+        else:
+            value_to_send = normalized_value
         rackID = data["rack"]
         sentMsg = f"/{carla_client_name}/{rackID}/set_parameter_value"
-        client.send_message(sentMsg, [parameterID, normalized_value])
+        client.send_message(sentMsg, [parameterID, value_to_send])
 
         if display_value is not None:
             logger.info(
-                "OSC sent: %s [%s, %.4f] (display value: %s)",
+                "OSC sent: %s [%s, %.4f] (actual: %.4f)",
                 sentMsg,
                 parameterID,
                 normalized_value,
-                display_value,
+                value_to_send,
             )
         else:
             logger.info(
                 "OSC sent: %s [%s, %.4f]",
                 sentMsg,
                 parameterID,
-                normalized_value,
+                value_to_send,
             )
     except Exception as e:
         logger.error(f"Error in handle_knob_change: {e}")
