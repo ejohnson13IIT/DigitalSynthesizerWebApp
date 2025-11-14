@@ -3,25 +3,14 @@ import threading, time, socket
 from gpiozero import PWMLED, MCP3008
 from time import sleep
 from pythonosc.udp_client import SimpleUDPClient
-import sys
-import os
-
-# Add project root to path for config loader
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config_loader import get_osc_config, get_carla_config
-
-# Load OSC and Carla configuration
-osc_cfg = get_osc_config()
-carla_cfg = get_carla_config()
-osc_ip = osc_cfg.get("ip", "127.0.0.1")
-osc_port = osc_cfg.get("udp_port", 28017)
-carla_client_name = carla_cfg.get("client_name", "Carla")
-client = SimpleUDPClient(osc_ip, osc_port)
 
 pot1 = MCP3008(0)
 pot2 = MCP3008(1)
 pot3 = MCP3008(2)
 pot4 = MCP3008(3)
+osc_ip = "127.0.0.1"   # change if your OSC target is on another device
+osc_port = 5005        # Carlas OSC UDP port (make sure this matches Carla)
+client = SimpleUDPClient(osc_ip, osc_port)
 
 lastVal1=0
 lastVal2=0
@@ -36,13 +25,13 @@ while True:
 	print()
 	
 	if (abs(int(pot1.value*100)-lastVal1)>2):
-		client.send_message(f"/{carla_client_name}/1/set_parameter_value", [0, pot1.value*48-24])
+		client.send_message("/Carla/00/set_parameter_value", [0, pot1.value*48-24])
 	if (abs(int(pot2.value*100)-lastVal2)>2):
-		client.send_message(f"/{carla_client_name}/1/set_parameter_value", [1, pot2.value*48-24])
+		client.send_message("/Carla/0/set_parameter_value", [1, pot2.value*48-24])
 	if (abs(int(pot3.value*100)-lastVal3)>2):
-		client.send_message(f"/{carla_client_name}/1/set_parameter_value", [2, pot3.value*48-24])
+		client.send_message("/Carla/0/set_parameter_value", [2, pot3.value*48-24])
 	if (abs(int(pot4.value*100)-lastVal4)>2):
-		client.send_message(f"/{carla_client_name}/1/set_parameter_value", [3, pot4.value*48-24])
+		client.send_message("/Carla/0/set_parameter_value", [3, pot4.value*48-24])
 	lastVal1=int(pot1.value*100)
 	lastVal2=int(pot2.value*100)
 	lastVal3=int(pot3.value*100)

@@ -25,8 +25,15 @@
 
   <Data>
    <Active>Yes</Active>
+   <Volume>0.501152</Volume>
    <ControlChannel>1</ControlChannel>
    <Options>0x3f9</Options>
+
+   <CustomData>
+    <Type>http://kxstudio.sf.net/ns/carla/property</Type>
+    <Key>CarlaSkinIsCompacted</Key>
+    <Value>false</Value>
+   </CustomData>
 
    <Chunk>
 VkMyIbbHBQA8QURMTUlESS1zdGF0ZT48YmFuaz48VkFMVUUgbmFtZT0iYmFuayIgdmFsPSIxIi8+PFZBTFVFIG5hbWU9Im5hbWUiIHZhbD0iIi8+PC9iYW5r
@@ -4253,13 +4260,14 @@ YXRlPgA=
 
   <Data>
    <Active>Yes</Active>
+   <Volume>0.451348</Volume>
    <ControlChannel>1</ControlChannel>
    <Options>0x4</Options>
 
    <Parameter>
     <Index>0</Index>
     <Name>Low</Name>
-    <Value>0</Value>
+    <Value>10.1176471710205</Value>
    </Parameter>
 
    <Parameter>
@@ -4271,7 +4279,7 @@ YXRlPgA=
    <Parameter>
     <Index>2</Index>
     <Name>High</Name>
-    <Value>0</Value>
+    <Value>18.705883026123</Value>
    </Parameter>
 
    <Parameter>
@@ -4294,21 +4302,44 @@ YXRlPgA=
 
    <CurrentMidiBank>1</CurrentMidiBank>
    <CurrentMidiProgram>1</CurrentMidiProgram>
+
+   <CustomData>
+    <Type>http://kxstudio.sf.net/ns/carla/property</Type>
+    <Key>CarlaSkinIsCompacted</Key>
+    <Value>false</Value>
+   </CustomData>
   </Data>
  </Plugin>
 
  <ExternalPatchbay>
   <Connection>
-   <Source>MidiIn:DONNER N25:DONNER N25 MIDI 1 24:0</Source>
-   <Target>Carla:MidiIn</Target>
+   <Source>a2j:AKM320 [20] (capture): AKM320 MIDI 1</Source>
+   <Target>Carla:events-in</Target>
   </Connection>
   <Connection>
-   <Source>Carla:AudioOut1</Source>
-   <Target>AudioOut:playback_1</Target>
+   <Source>Carla:audio-out1</Source>
+   <Target>system:playback_1</Target>
   </Connection>
   <Connection>
-   <Source>Carla:AudioOut2</Source>
-   <Target>AudioOut:playback_2</Target>
+   <Source>Carla:audio-out2</Source>
+   <Target>system:playback_2</Target>
   </Connection>
+  <Positions>
+   <Position x1="1671" y1="1083">
+    <Name>Carla</Name>
+   </Position>
+   <Position x1="1550" y1="1274" x2="1961" y2="1131">
+    <Name>system</Name>
+   </Position>
+   <Position x1="1499" y1="1298">
+    <Name>ADLplug</Name>
+   </Position>
+   <Position x1="1621" y1="1420">
+    <Name>3 Band EQ</Name>
+   </Position>
+   <Position x1="1124" y1="1116" x2="1057" y2="1249">
+    <Name>a2j</Name>
+   </Position>
+  </Positions>
  </ExternalPatchbay>
 </CARLA-PROJECT>

@@ -1,0 +1,68 @@
+<!DOCTYPE patchbay>
+<patchbay name="patchbay test" version="0.9.9">
+ <output-sockets>
+  <socket exclusive="off" client="system" name="system" type="jack-audio">
+   <plug>capture_1</plug>
+   <plug>capture_2</plug>
+  </socket>
+  <socket exclusive="off" client="carla_api\.0\/ADLplug" name="carla_api.0/ADLplug" type="jack-audio">
+   <plug>output_1</plug>
+   <plug>output_2</plug>
+  </socket>
+  <socket exclusive="off" client="carla_api\.0\/3\ Band\ EQ" name="carla_api.0/3 Band EQ" type="jack-audio">
+   <plug>output_1</plug>
+   <plug>output_2</plug>
+  </socket>
+  <socket exclusive="off" client="a2j" name="a2j" type="jack-midi">
+   <plug>Midi\ Through\ \[14\]\ \(capture\)\:\ Midi\ Through\ Port\-0</plug>
+   <plug>AKM320\ \[24\]\ \(capture\)\:\ AKM320\ MIDI\ 1</plug>
+  </socket>
+  <socket exclusive="off" client="a2j" name="a2j 2" type="jack-midi">
+   <plug>AKM320\ \[24\]\ \(capture\)\:\ AKM320\ MIDI\ 1</plug>
+  </socket>
+  <socket exclusive="off" client="Midi\ Through" name="Midi Through" type="alsa-midi">
+   <plug>Midi\ Through\ Port\-0</plug>
+  </socket>
+  <socket exclusive="off" client="AKM320" name="AKM320" type="alsa-midi">
+   <plug>AKM320\ MIDI\ 1</plug>
+  </socket>
+ </output-sockets>
+ <input-sockets>
+  <socket exclusive="off" client="system" name="system" type="jack-audio">
+   <plug>playback_1</plug>
+   <plug>playback_2</plug>
+  </socket>
+  <socket exclusive="off" client="carla_api\.0\/3\ Band\ EQ" name="carla_api.0/3 Band EQ" type="jack-audio">
+   <plug>input_1</plug>
+   <plug>input_2</plug>
+  </socket>
+  <socket exclusive="off" client="carla_api\.0\/ADLplug" name="carla_api.0/ADLplug" type="jack-midi">
+   <plug>events\-in</plug>
+  </socket>
+  <socket exclusive="off" client="carla_api\.0\/3\ Band\ EQ" name="carla_api.0/3 Band EQ" type="jack-midi">
+   <plug>events\-in</plug>
+  </socket>
+  <socket exclusive="off" client="a2j" name="a2j" type="jack-midi">
+   <plug>Midi\ Through\ \[14\]\ \(playback\)\:\ Midi\ Through\ Port\-0</plug>
+   <plug>AKM320\ \[24\]\ \(playback\)\:\ AKM320\ MIDI\ 1</plug>
+  </socket>
+  <socket exclusive="off" client="Midi\ Through" name="Midi Through" type="alsa-midi">
+   <plug>Midi\ Through\ Port\-0</plug>
+  </socket>
+  <socket exclusive="off" client="AKM320" name="AKM320" type="alsa-midi">
+   <plug>AKM320\ MIDI\ 1</plug>
+  </socket>
+  <socket exclusive="off" client="a2jmidid" name="a2jmidid" type="alsa-midi">
+   <plug>port</plug>
+  </socket>
+ </input-sockets>
+ <slots/>
+ <cables>
+  <cable output="system" input="system" type="jack-audio"/>
+  <cable output="carla_api.0/ADLplug" input="system" type="jack-audio"/>
+  <cable output="a2j 2" input="carla_api.0/ADLplug" type="jack-midi"/>
+  <cable output="Midi Through" input="a2jmidid" type="alsa-midi"/>
+  <cable output="AKM320" input="a2jmidid" type="alsa-midi"/>
+ </cables>
+</patchbay>
+

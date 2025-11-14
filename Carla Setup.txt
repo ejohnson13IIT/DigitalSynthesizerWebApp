@@ -21,7 +21,7 @@ systemctl --user mask pulseaudio.socket
 #   systemctl --user mask pipewire pipewire-pulse
 
 # Step 2: Start JACK audio server
-jack_control start
+jackd -dalsa -dhw:3 -r44100 -p1024 -n2 -S &
 
 # Verify JACK is running:
 #   jack_control status

@@ -1,0 +1,61 @@
+<!DOCTYPE patchbay>
+<patchbay name="test" version="0.9.9">
+ <output-sockets>
+  <socket name="ADLplug" client="ADLplug" type="jack-audio" exclusive="off">
+   <plug>output_1</plug>
+   <plug>output_2</plug>
+  </socket>
+  <socket name="3 Band EQ" client="3\ Band\ EQ" type="jack-audio" exclusive="off">
+   <plug>output_1</plug>
+   <plug>output_2</plug>
+  </socket>
+  <socket name="a2j" client="a2j" type="jack-midi" exclusive="off">
+   <plug>Midi\ Through\ \[14\]\ \(capture\)\:\ Midi\ Through\ Port\-0</plug>
+   <plug>AKM320\ \[20\]\ \(capture\)\:\ AKM320\ MIDI\ 1</plug>
+  </socket>
+  <socket name="Midi Through" client="Midi\ Through" type="alsa-midi" exclusive="off">
+   <plug>Midi\ Through\ Port\-0</plug>
+  </socket>
+  <socket name="AKM320" client="AKM320" type="alsa-midi" exclusive="off">
+   <plug>AKM320\ MIDI\ 1</plug>
+  </socket>
+ </output-sockets>
+ <input-sockets>
+  <socket name="system" client="system" type="jack-audio" exclusive="off">
+   <plug>playback_1</plug>
+   <plug>playback_2</plug>
+  </socket>
+  <socket name="3 Band EQ" client="3\ Band\ EQ" type="jack-audio" exclusive="off">
+   <plug>input_1</plug>
+   <plug>input_2</plug>
+  </socket>
+  <socket name="ADLplug" client="ADLplug" type="jack-midi" exclusive="off">
+   <plug>events\-in</plug>
+  </socket>
+  <socket name="a2j" client="a2j" type="jack-midi" exclusive="off">
+   <plug>Midi\ Through\ \[14\]\ \(playback\)\:\ Midi\ Through\ Port\-0</plug>
+   <plug>AKM320\ \[20\]\ \(playback\)\:\ AKM320\ MIDI\ 1</plug>
+  </socket>
+  <socket name="3 Band EQ" client="3\ Band\ EQ" type="jack-midi" exclusive="off">
+   <plug>events\-in</plug>
+  </socket>
+  <socket name="Midi Through" client="Midi\ Through" type="alsa-midi" exclusive="off">
+   <plug>Midi\ Through\ Port\-0</plug>
+  </socket>
+  <socket name="AKM320" client="AKM320" type="alsa-midi" exclusive="off">
+   <plug>AKM320\ MIDI\ 1</plug>
+  </socket>
+  <socket name="a2jmidid" client="a2jmidid" type="alsa-midi" exclusive="off">
+   <plug>port</plug>
+  </socket>
+ </input-sockets>
+ <slots/>
+ <cables>
+  <cable input="3 Band EQ" output="ADLplug" type="jack-audio"/>
+  <cable input="system" output="3 Band EQ" type="jack-audio"/>
+  <cable input="ADLplug" output="a2j" type="jack-midi"/>
+  <cable input="a2jmidid" output="Midi Through" type="alsa-midi"/>
+  <cable input="a2jmidid" output="AKM320" type="alsa-midi"/>
+ </cables>
+</patchbay>
+
