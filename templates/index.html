@@ -288,7 +288,7 @@
               socket.emit('knob_change', {
                 rack: pluginId,
                 knob: param.id,
-                value: clamped,
+                value: rawValue,
                 displayValue: rawValue,
               });
               console.log(`📤 Rack ${pluginId} Param ${param.id} -> ${rawValue} (norm ${clamped.toFixed(3)})`);
