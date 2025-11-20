@@ -901,13 +901,14 @@ def move_plugin():
         if new_position < 0 or new_position >= len(PLUGIN_CHAIN):
             return jsonify({"error": f"Cannot move plugin {direction} - already at edge"}), 400
         
-        # Get adjacent plugins
+        # Get adjacent plugins BEFORE moving (for disconnecting)
         prev_plugin = PLUGIN_CHAIN[current_position - 1] if current_position > 0 else None
         next_plugin = PLUGIN_CHAIN[current_position + 1] if current_position < len(PLUGIN_CHAIN) - 1 else None
-        new_prev_plugin = PLUGIN_CHAIN[new_position - 1] if new_position > 0 else None
-        new_next_plugin = PLUGIN_CHAIN[new_position + 1] if new_position < len(PLUGIN_CHAIN) - 1 else None
         
-        # Disconnect current connections
+        # Identify the plugin that will be displaced (the one currently at new_position)
+        displaced_plugin = PLUGIN_CHAIN[new_position] if new_position < len(PLUGIN_CHAIN) else None
+        
+        # Disconnect current connections of the plugin being moved
         if prev_plugin is not None:
             disconnect_plugin_chain(prev_plugin, plugin_id)
         if next_plugin is not None:
@@ -917,35 +918,41 @@ def move_plugin():
         if current_position == len(PLUGIN_CHAIN) - 1:
             disconnect_final_plugin_from_system(plugin_id)
         
-        # If moving to last position, disconnect new last plugin from system
-        if new_position == len(PLUGIN_CHAIN) - 1 and next_plugin is not None:
-            disconnect_final_plugin_from_system(next_plugin)
+        # If moving to last position, disconnect the displaced plugin from system
+        # (since it will no longer be last after we move)
+        if new_position == len(PLUGIN_CHAIN) - 1 and displaced_plugin is not None:
+            disconnect_final_plugin_from_system(displaced_plugin)
         
         # Move plugin in chain
         PLUGIN_CHAIN.remove(plugin_id)
         PLUGIN_CHAIN.insert(new_position, plugin_id)
         
-        # Reconnect in new position
+        # NOW get the adjacent plugins AFTER moving (for reconnecting)
+        new_prev_plugin = PLUGIN_CHAIN[new_position - 1] if new_position > 0 else None
+        new_next_plugin = PLUGIN_CHAIN[new_position + 1] if new_position < len(PLUGIN_CHAIN) - 1 else None
+        
+        # Reconnect the moved plugin in its new position
         if new_prev_plugin is not None:
+            print(f"Connecting {new_prev_plugin} -> {plugin_id} (moved plugin)")
             connect_plugin_chain(new_prev_plugin, plugin_id)
         if new_next_plugin is not None:
+            print(f"Connecting {plugin_id} -> {new_next_plugin} (moved plugin)")
             connect_plugin_chain(plugin_id, new_next_plugin)
         else:
             # This is now the final plugin - connect to system
+            print(f"Connecting {plugin_id} -> system (moved plugin is now final)")
             connect_final_plugin_to_system(plugin_id)
         
-        # Reconnect the plugin that was displaced
-        if direction == "down" and next_plugin is not None:
-            # We moved down, so reconnect the plugin that was below us
-            if prev_plugin is not None:
-                connect_plugin_chain(prev_plugin, next_plugin)
-        elif direction == "up" and prev_plugin is not None:
-            # We moved up, so reconnect the plugin that was above us
-            if next_plugin is not None:
-                connect_plugin_chain(prev_plugin, next_plugin)
-            else:
-                # The plugin we moved up from was last - connect to system
-                connect_final_plugin_to_system(prev_plugin)
+        # Reconnect the gap left by moving the plugin
+        # The gap is between prev_plugin and next_plugin (if both exist)
+        if prev_plugin is not None and next_plugin is not None:
+            # There's a gap to reconnect: prev_plugin -> next_plugin
+            print(f"Filling gap: {prev_plugin} -> {next_plugin}")
+            connect_plugin_chain(prev_plugin, next_plugin)
+        elif prev_plugin is not None and next_plugin is None:
+            # We moved from last position, prev_plugin is now last
+            print(f"Previous plugin {prev_plugin} is now final")
+            connect_final_plugin_to_system(prev_plugin)
         
         return jsonify({
             "status": "ok",
