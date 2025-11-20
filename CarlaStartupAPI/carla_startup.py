@@ -1073,6 +1073,14 @@ def move_plugin():
             time.sleep(0.2)
             connect_final_plugin_to_system(plugin_id)
         
+        # CRITICAL: Always ensure the final plugin in the chain is connected to system playback
+        # This is a safety net to catch any edge cases
+        if len(PLUGIN_CHAIN) > 0:
+            final_plugin_id = PLUGIN_CHAIN[-1]
+            print(f"Ensuring final plugin {final_plugin_id} is connected to system playback")
+            time.sleep(0.1)
+            connect_final_plugin_to_system(final_plugin_id)
+        
         return jsonify({
             "status": "ok",
             "plugin_id": plugin_id,

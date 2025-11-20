@@ -318,6 +318,42 @@
       }
 
       async function movePluginInChain(pluginId, direction) {
+        const container = document.getElementById('knobsContainer');
+        const racks = Array.from(container.querySelectorAll('.rack'));
+        
+        // Find the current rack and its position
+        const currentRack = racks.find(rack => parseInt(rack.dataset.pluginId) === pluginId);
+        if (!currentRack) {
+          console.error('Could not find rack for plugin', pluginId);
+          return;
+        }
+        
+        const currentIndex = racks.indexOf(currentRack);
+        const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+        
+        // Validate new position
+        if (newIndex < 0 || newIndex >= racks.length) {
+          return; // Already at edge, arrow should be disabled
+        }
+        
+        // Optimistically swap the boxes in the DOM immediately
+        const targetRack = racks[newIndex];
+        if (direction === 'up') {
+          container.insertBefore(currentRack, targetRack);
+        } else {
+          container.insertBefore(targetRack, currentRack);
+        }
+        
+        // Update chain positions in dataset
+        const allRacks = Array.from(container.querySelectorAll('.rack'));
+        allRacks.forEach((rack, index) => {
+          rack.dataset.chainPosition = index;
+        });
+        
+        // Update arrow button states
+        updateArrowStates(container);
+        
+        // Then call the API to update JACK routing
         try {
           const response = await fetch('/api/plugins/move', {
             method: 'POST',
@@ -330,12 +366,29 @@
             throw new Error(data.error || `Server responded with ${response.status}`);
           }
 
-          // Reload plugins to reflect new chain order
+          // Reload plugins to ensure UI matches server state
           await loadPlugins();
         } catch (error) {
           console.error('Failed to move plugin:', error);
           setPluginStatus(`Failed to move plugin: ${error.message}`, 'error');
+          // Revert on error by reloading
+          await loadPlugins();
         }
+      }
+      
+      function updateArrowStates(container) {
+        const racks = Array.from(container.querySelectorAll('.rack'));
+        racks.forEach((rack, index) => {
+          const upArrow = rack.querySelector('.arrow-button:first-of-type');
+          const downArrow = rack.querySelector('.arrow-button:last-of-type');
+          
+          if (upArrow) {
+            upArrow.disabled = index === 0;
+          }
+          if (downArrow) {
+            downArrow.disabled = index === racks.length - 1;
+          }
+        });
       }
 
       function createKnob(pluginId, param) {
@@ -458,7 +511,14 @@
             throw new Error(`Server responded with ${response.status}`);
           }
           const data = await response.json();
-          const plugins = data.plugins || [];
+          let plugins = data.plugins || [];
+
+          // Sort plugins by chain_position to reflect processing order
+          plugins.sort((a, b) => {
+            const posA = a.chain_position !== undefined ? a.chain_position : a.id;
+            const posB = b.chain_position !== undefined ? b.chain_position : b.id;
+            return posA - posB;
+          });
 
           container.innerHTML = '';
           if (plugins.length === 0) {
@@ -466,10 +526,15 @@
             return;
           }
 
-          plugins.forEach((plugin) => {
-            const rack = createRack(plugin);
+          const chainLength = plugins.length;
+          plugins.forEach((plugin, index) => {
+            const chainPosition = plugin.chain_position !== undefined ? plugin.chain_position : index;
+            const rack = createRack(plugin, chainPosition, chainLength);
             container.appendChild(rack);
           });
+          
+          // Update arrow states
+          updateArrowStates(container);
 
           statusMessage.textContent = `Loaded ${plugins.length} plugin(s) from Carla.`;
         } catch (error) {
