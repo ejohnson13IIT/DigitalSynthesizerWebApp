@@ -379,6 +379,55 @@ def disconnect_final_plugin_from_system(plugin_id: int):
         if source:
             jack_disconnect(source, dest)
 
+def get_plugin_actual_connections(plugin_id: int) -> List[tuple]:
+    """Get actual JACK connections for a plugin by querying jack_lsp"""
+    connections = []
+    try:
+        plugin_info = host.get_plugin_info(plugin_id)
+        plugin_name = plugin_info.get("name", f"plugin_{plugin_id}")
+        
+        # Get all ports and their connections
+        result = subprocess.run(
+            ["jack_lsp", "-c"],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        
+        if result.returncode == 0:
+            lines = result.stdout.split('\n')
+            current_port = None
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    current_port = None
+                    continue
+                if line.startswith(plugin_name + ':'):
+                    current_port = line
+                elif current_port and line and not line.startswith(plugin_name + ':'):
+                    # This is a connection (indented or following the port)
+                    dest_port = line.strip()
+                    if dest_port:
+                        connections.append((current_port, dest_port))
+        
+    except Exception as e:
+        print(f"Error getting connections for plugin {plugin_id}: {e}")
+    
+    return connections
+
+def disconnect_plugin_completely(plugin_id: int):
+    """Disconnect a plugin from all its actual JACK connections"""
+    # First, get actual connections using jack_lsp
+    connections = get_plugin_actual_connections(plugin_id)
+    
+    # Disconnect all found connections
+    for source, dest in connections:
+        print(f"Disconnecting actual connection: {source} -> {dest}")
+        jack_disconnect(source, dest)
+    
+    # Also disconnect from system explicitly (in case jack_lsp missed it)
+    disconnect_final_plugin_from_system(plugin_id)
+
 def reroute_plugin_chain(insert_position: int, new_plugin_id: int):
     """
     Reroute JACK connections when a plugin is inserted.
@@ -908,51 +957,90 @@ def move_plugin():
         # Identify the plugin that will be displaced (the one currently at new_position)
         displaced_plugin = PLUGIN_CHAIN[new_position] if new_position < len(PLUGIN_CHAIN) else None
         
-        # Disconnect current connections of the plugin being moved
+        print(f"Moving plugin {plugin_id} from position {current_position} to {new_position}")
+        print(f"  prev_plugin: {prev_plugin}, next_plugin: {next_plugin}, displaced_plugin: {displaced_plugin}")
+        
+        # Disconnect ALL connections involving the plugin being moved
         if prev_plugin is not None:
+            print(f"Disconnecting {prev_plugin} -> {plugin_id}")
             disconnect_plugin_chain(prev_plugin, plugin_id)
         if next_plugin is not None:
+            print(f"Disconnecting {plugin_id} -> {next_plugin}")
             disconnect_plugin_chain(plugin_id, next_plugin)
         
         # If moving from last position, disconnect from system
         if current_position == len(PLUGIN_CHAIN) - 1:
+            print(f"Disconnecting {plugin_id} from system (was last)")
             disconnect_final_plugin_from_system(plugin_id)
         
-        # If moving to last position, disconnect the displaced plugin from system
-        # (since it will no longer be last after we move)
-        if new_position == len(PLUGIN_CHAIN) - 1 and displaced_plugin is not None:
-            disconnect_final_plugin_from_system(displaced_plugin)
+        # Disconnect the displaced plugin completely
+        # The displaced plugin is at new_position, and will be moved when we insert
+        if displaced_plugin is not None and displaced_plugin != plugin_id:
+            # If displaced plugin is currently last, disconnect from system FIRST
+            if new_position == len(PLUGIN_CHAIN) - 1:
+                print(f"Disconnecting {displaced_plugin} from system (was last, will be displaced)")
+                disconnect_final_plugin_from_system(displaced_plugin)
+            
+            # Find what the displaced plugin is currently connected to (in OLD chain)
+            # Note: displaced_prev might be the plugin we're moving if moving down
+            displaced_prev = PLUGIN_CHAIN[new_position - 1] if new_position > 0 else None
+            displaced_next = PLUGIN_CHAIN[new_position + 1] if new_position < len(PLUGIN_CHAIN) - 1 else None
+            
+            # Disconnect from previous (but not if it's the plugin we're moving, we already did that)
+            if displaced_prev is not None and displaced_prev != plugin_id:
+                print(f"Disconnecting {displaced_prev} -> {displaced_plugin} (displaced plugin)")
+                disconnect_plugin_chain(displaced_prev, displaced_plugin)
+            
+            # Disconnect from next
+            if displaced_next is not None:
+                print(f"Disconnecting {displaced_plugin} -> {displaced_next} (displaced plugin)")
+                disconnect_plugin_chain(displaced_plugin, displaced_next)
+            
+            # Also completely disconnect to be safe (handles any missed connections)
+            print(f"Completely disconnecting {displaced_plugin} to ensure clean state")
+            disconnect_plugin_completely(displaced_plugin)
         
         # Move plugin in chain
         PLUGIN_CHAIN.remove(plugin_id)
         PLUGIN_CHAIN.insert(new_position, plugin_id)
+        print(f"Chain after move: {PLUGIN_CHAIN}")
+        
+        # Wait a moment for disconnections to complete
+        time.sleep(0.3)
         
         # NOW get the adjacent plugins AFTER moving (for reconnecting)
         new_prev_plugin = PLUGIN_CHAIN[new_position - 1] if new_position > 0 else None
         new_next_plugin = PLUGIN_CHAIN[new_position + 1] if new_position < len(PLUGIN_CHAIN) - 1 else None
         
-        # Reconnect the moved plugin in its new position
-        if new_prev_plugin is not None:
-            print(f"Connecting {new_prev_plugin} -> {plugin_id} (moved plugin)")
-            connect_plugin_chain(new_prev_plugin, plugin_id)
-        if new_next_plugin is not None:
-            print(f"Connecting {plugin_id} -> {new_next_plugin} (moved plugin)")
-            connect_plugin_chain(plugin_id, new_next_plugin)
-        else:
-            # This is now the final plugin - connect to system
-            print(f"Connecting {plugin_id} -> system (moved plugin is now final)")
-            connect_final_plugin_to_system(plugin_id)
+        print(f"  new_prev_plugin: {new_prev_plugin}, new_next_plugin: {new_next_plugin}")
         
-        # Reconnect the gap left by moving the plugin
+        # Reconnect the gap left by moving the plugin FIRST
         # The gap is between prev_plugin and next_plugin (if both exist)
         if prev_plugin is not None and next_plugin is not None:
             # There's a gap to reconnect: prev_plugin -> next_plugin
             print(f"Filling gap: {prev_plugin} -> {next_plugin}")
+            time.sleep(0.2)
             connect_plugin_chain(prev_plugin, next_plugin)
         elif prev_plugin is not None and next_plugin is None:
             # We moved from last position, prev_plugin is now last
             print(f"Previous plugin {prev_plugin} is now final")
+            time.sleep(0.2)
             connect_final_plugin_to_system(prev_plugin)
+        
+        # Reconnect the moved plugin in its new position
+        if new_prev_plugin is not None:
+            print(f"Connecting {new_prev_plugin} -> {plugin_id} (moved plugin)")
+            time.sleep(0.2)
+            connect_plugin_chain(new_prev_plugin, plugin_id)
+        if new_next_plugin is not None:
+            print(f"Connecting {plugin_id} -> {new_next_plugin} (moved plugin)")
+            time.sleep(0.2)
+            connect_plugin_chain(plugin_id, new_next_plugin)
+        else:
+            # This is now the final plugin - connect to system
+            print(f"Connecting {plugin_id} -> system (moved plugin is now final)")
+            time.sleep(0.2)
+            connect_final_plugin_to_system(plugin_id)
         
         return jsonify({
             "status": "ok",
