@@ -144,6 +144,9 @@ def _maybe_option(module: Any, name: str) -> int:
 PLUGIN_DB_PATH = plugin_db_cfg.get("path")
 PLUGIN_DATABASE: List[Dict[str, Any]] = []
 
+# Cache for discovered plugins (not in database)
+DISCOVERED_PLUGINS_CACHE: Dict[str, Dict[str, Any]] = {}
+
 BACKEND_TYPE_MAP = {
     "PLUGIN_NONE": _maybe_attr(carla_backend, "PLUGIN_NONE", 0),
     "NONE": _maybe_attr(carla_backend, "PLUGIN_NONE", 0),
@@ -454,7 +457,7 @@ def discover_plugins():
                                 category_name = cat_name
                                 break
                         
-                        discovered_plugins.append({
+                        plugin_entry = {
                             "id": plugin_id,
                             "display_name": name or label,
                             "description": info.get("maker", ""),
@@ -470,7 +473,10 @@ def discover_plugins():
                             "midi_outs": info.get("midiOuts", 0),
                             "parameters_ins": info.get("parameterIns", 0),
                             "parameters_outs": info.get("parameterOuts", 0),
-                        })
+                        }
+                        discovered_plugins.append(plugin_entry)
+                        # Cache discovered plugins for later use in add_plugin
+                        DISCOVERED_PLUGINS_CACHE[plugin_id] = plugin_entry
                     except Exception as e:
                         print(f"Error getting info for {type_name} plugin {i}: {e}")
                         continue
@@ -528,18 +534,20 @@ def _normalize_options(options: Any) -> int:
 
 
 def _find_plugin_entry(plugin_id: str) -> Dict[str, Any]:
+    """Find plugin entry in database or discovered plugins cache."""
+    # First check the database
     for entry in PLUGIN_DATABASE:
         if entry.get("id") == plugin_id:
             return entry
+    # Then check discovered plugins cache
+    if plugin_id in DISCOVERED_PLUGINS_CACHE:
+        return DISCOVERED_PLUGINS_CACHE[plugin_id]
     return {}
 
 
 @app.route("/plugins/add", methods=["POST"])
 def add_plugin():
-    """Add a new plugin from the plugin database to the current project."""
-    if not PLUGIN_DATABASE:
-        return jsonify({"error": "Plugin database not configured"}), 400
-
+    """Add a new plugin from the plugin database or discovered plugins to the current project."""
     try:
         data = request.get_json(force=True)
         plugin_id = data.get("plugin_id")
@@ -548,7 +556,7 @@ def add_plugin():
 
         entry = _find_plugin_entry(plugin_id)
         if not entry:
-            return jsonify({"error": f"Plugin id '{plugin_id}' not found in database"}), 404
+            return jsonify({"error": f"Plugin id '{plugin_id}' not found in database or discovered plugins. Try discovering plugins first."}), 404
 
         backend_type = _normalize_backend_type(entry.get("backend_type", carla_backend.PLUGIN_INTERNAL))
         category = _normalize_category(entry.get("category", carla_backend.PLUGIN_CATEGORY_NONE))
