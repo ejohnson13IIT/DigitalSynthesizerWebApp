@@ -27,8 +27,9 @@ sys.path.append(carla_cfg.get("python_path", "/usr/share/carla"))
 
 try:
     import carla_backend  # type: ignore
+    import carla_utils  # type: ignore
 except ImportError as exc:  # pragma: no cover
-    print(f"Failed to import carla_backend: {exc}")
+    print(f"Failed to import carla_backend or carla_utils: {exc}")
     raise
 
 # Import ENGINE_OPTION constants for better code clarity
@@ -50,6 +51,33 @@ OSC_TCP_PORT = osc_cfg.get("tcp_port", 5004)
 # === Initialize Carla Host ===
 print("Initializing Carla HostDLL...")
 host = carla_backend.CarlaHostDLL(LIB_PATH, True)
+
+# Initialize CarlaUtils for plugin discovery
+# CarlaUtils uses libcarla_utils.so which is typically in the same directory as the main library
+utils = None
+utils_lib_paths = [
+    LIB_PATH.replace("libcarla_standalone2.so", "libcarla_utils.so"),
+    LIB_PATH.replace("libcarla_standalone2.so", "libcarla_utils2.so"),
+    "/usr/lib/carla/libcarla_utils.so",
+    "/usr/lib/carla/libcarla_utils2.so",
+    "/usr/local/lib/carla/libcarla_utils.so",
+    "/usr/local/lib/carla/libcarla_utils2.so",
+]
+
+for utils_lib_path in utils_lib_paths:
+    if os.path.exists(utils_lib_path):
+        try:
+            utils = carla_utils.CarlaUtils(utils_lib_path)
+            print(f"CarlaUtils initialized from: {utils_lib_path}")
+            break
+        except Exception as e:
+            print(f"Warning: Could not load CarlaUtils from {utils_lib_path}: {e}")
+            continue
+
+if utils is None:
+    print("Warning: Could not initialize CarlaUtils from any known location.")
+    print("Plugin discovery will be limited. Continuing anyway...")
+    print(f"Tried paths: {utils_lib_paths}")
 driver_count = host.get_engine_driver_count()
 print(f"HOST DRIVER COUNT: {driver_count}")
 for i in range(driver_count):
@@ -366,6 +394,12 @@ def plugin_database():
 def discover_plugins():
     """Discover available plugins from configured plugin paths using Carla's discovery system."""
     try:
+        if utils is None:
+            return jsonify({
+                "error": "CarlaUtils not available. Plugin discovery requires libcarla_utils.so",
+                "plugins": []
+            }), 503
+        
         discovered_plugins = []
         
         # Plugin types that support cached discovery
@@ -392,11 +426,11 @@ def discover_plugins():
             plugin_path = plugin_paths.get(type_name, "")
             
             try:
-                count = host.get_cached_plugin_count(type_id, plugin_path)
+                count = utils.get_cached_plugin_count(type_id, plugin_path)
                 
                 for i in range(count):
                     try:
-                        info = host.get_cached_plugin_info(type_id, i)
+                        info = utils.get_cached_plugin_info(type_id, i)
                         
                         if not info or not info.get("valid", False):
                             continue
