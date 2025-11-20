@@ -63,6 +63,27 @@ host.set_engine_option(ENGINE_OPTION_OSC_ENABLED, 1, "")
 host.set_engine_option(ENGINE_OPTION_OSC_PORT_TCP, OSC_TCP_PORT, "")
 host.set_engine_option(ENGINE_OPTION_OSC_PORT_UDP, OSC_UDP_PORT, "")
 
+# Configure plugin paths BEFORE initializing engine
+# Get plugin paths from config or use defaults
+ENGINE_OPTION_PLUGIN_PATH = getattr(carla_backend, "ENGINE_OPTION_PLUGIN_PATH", 19)
+PLUGIN_LV2 = getattr(carla_backend, "PLUGIN_LV2", 0)
+PLUGIN_VST2 = getattr(carla_backend, "PLUGIN_VST2", 0)
+PLUGIN_VST3 = getattr(carla_backend, "PLUGIN_VST3", 0)
+
+# Get plugin paths from config
+plugin_paths_cfg = carla_cfg.get("plugin_paths", {})
+lv2_path = plugin_paths_cfg.get("lv2", os.getenv("LV2_PATH", "/usr/lib/lv2"))
+vst2_path = plugin_paths_cfg.get("vst2", os.getenv("VST_PATH", "/usr/lib/vst"))
+vst3_path = plugin_paths_cfg.get("vst3", os.getenv("VST3_PATH", "/usr/lib/vst3"))
+
+# Set plugin paths
+if lv2_path:
+    host.set_engine_option(ENGINE_OPTION_PLUGIN_PATH, PLUGIN_LV2, lv2_path)
+if vst2_path:
+    host.set_engine_option(ENGINE_OPTION_PLUGIN_PATH, PLUGIN_VST2, vst2_path)
+if vst3_path:
+    host.set_engine_option(ENGINE_OPTION_PLUGIN_PATH, PLUGIN_VST3, vst3_path)
+
 # Initialize the audio engine
 ok = host.engine_init(AUDIO_DRIVER, CLIENT_NAME)
 if not ok:
@@ -231,6 +252,7 @@ def index():
             "GET /plugins/<id>/parameters": "List parameters for a plugin",
             "POST /plugins/set_parameter": "Set a parameter value (body: {plugin_id, param_id, value})",
             "GET /plugin-db": "List available plugins from configured database",
+            "GET /plugins/discover": "Discover available plugins from configured plugin paths",
             "POST /plugins/add": "Add a plugin from the database (body: {plugin_id})",
             "POST /reload_project": "Reload the Carla project (optional body: {path})",
             "POST /shutdown": "Shutdown the Carla engine"
@@ -338,6 +360,102 @@ def plugin_database():
             "category": entry.get("category"),
         })
     return jsonify({"plugins": entries})
+
+
+@app.route("/plugins/discover", methods=["GET"])
+def discover_plugins():
+    """Discover available plugins from configured plugin paths using Carla's discovery system."""
+    try:
+        discovered_plugins = []
+        
+        # Plugin types that support cached discovery
+        discoverable_types = {
+            "PLUGIN_INTERNAL": carla_backend.PLUGIN_INTERNAL,
+            "PLUGIN_LV2": carla_backend.PLUGIN_LV2,
+            "PLUGIN_JSFX": getattr(carla_backend, "PLUGIN_JSFX", None),
+            "PLUGIN_SFZ": getattr(carla_backend, "PLUGIN_SFZ", None),
+        }
+        
+        # Get plugin paths from config or environment variables
+        plugin_paths_cfg = carla_cfg.get("plugin_paths", {})
+        
+        plugin_paths = {
+            "PLUGIN_LV2": plugin_paths_cfg.get("lv2", os.getenv("LV2_PATH", "/usr/lib/lv2")),
+            "PLUGIN_JSFX": plugin_paths_cfg.get("jsfx", os.getenv("JSFX_PATH", "")),
+            "PLUGIN_SFZ": plugin_paths_cfg.get("sfz", os.getenv("SFZ_PATH", "")),
+        }
+        
+        for type_name, type_id in discoverable_types.items():
+            if type_id is None:
+                continue
+                
+            plugin_path = plugin_paths.get(type_name, "")
+            
+            try:
+                count = host.get_cached_plugin_count(type_id, plugin_path)
+                
+                for i in range(count):
+                    try:
+                        info = host.get_cached_plugin_info(type_id, i)
+                        
+                        if not info or not info.get("valid", False):
+                            continue
+                        
+                        # Extract plugin information
+                        label = info.get("label", "")
+                        name = info.get("name", label)
+                        
+                        if not label:
+                            continue
+                        
+                        # Generate unique ID
+                        plugin_id = f"{type_name.lower()}_{label.replace('/', '_').replace(' ', '_').lower()}"
+                        plugin_id = plugin_id.replace("plugin_", "").replace("__", "_")
+                        
+                        # Map category ID to category name
+                        category_id = info.get("category", 0)
+                        category_name = "PLUGIN_CATEGORY_NONE"
+                        for cat_name, cat_id in CATEGORY_MAP.items():
+                            if isinstance(cat_id, int) and cat_id == category_id:
+                                category_name = cat_name
+                                break
+                        
+                        discovered_plugins.append({
+                            "id": plugin_id,
+                            "display_name": name or label,
+                            "description": info.get("maker", ""),
+                            "backend_type": type_name,
+                            "category": category_name,
+                            "filename": info.get("filename", ""),
+                            "name": name or "",
+                            "label": label,
+                            "unique_id": int(info.get("uniqueId", 0)),
+                            "audio_ins": info.get("audioIns", 0),
+                            "audio_outs": info.get("audioOuts", 0),
+                            "midi_ins": info.get("midiIns", 0),
+                            "midi_outs": info.get("midiOuts", 0),
+                            "parameters_ins": info.get("parameterIns", 0),
+                            "parameters_outs": info.get("parameterOuts", 0),
+                        })
+                    except Exception as e:
+                        print(f"Error getting info for {type_name} plugin {i}: {e}")
+                        continue
+                        
+            except Exception as e:
+                print(f"Error discovering {type_name} plugins: {e}")
+                continue
+        
+        # Sort by type and name
+        discovered_plugins.sort(key=lambda x: (x["backend_type"], x["display_name"]))
+        
+        return jsonify({
+            "plugins": discovered_plugins,
+            "count": len(discovered_plugins),
+            "message": f"Discovered {len(discovered_plugins)} plugins from configured paths"
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e), "plugins": []}), 500
 
 
 def _normalize_backend_type(value: Any) -> int:

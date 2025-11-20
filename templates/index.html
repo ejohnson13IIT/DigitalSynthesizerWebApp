@@ -157,11 +157,12 @@
   <body>
     <h1>Digital Synthesizer Control</h1>
     <div class="control-panel">
-      <label for="pluginSelect">Add plugin from database:</label>
+      <label for="pluginSelect">Add plugin:</label>
       <select id="pluginSelect">
         <option value="">Select a plugin…</option>
       </select>
       <button id="addPluginButton">Add Plugin</button>
+      <button id="discoverPluginsButton">Discover Plugins</button>
       <span id="pluginActionStatus" class="action-status"></span>
     </div>
     <div id="statusMessage" class="status-message">Loading plugin data...</div>
@@ -178,8 +179,10 @@
 
       const pluginSelect = document.getElementById('pluginSelect');
       const addPluginButton = document.getElementById('addPluginButton');
+      const discoverPluginsButton = document.getElementById('discoverPluginsButton');
       const pluginActionStatus = document.getElementById('pluginActionStatus');
       addPluginButton.addEventListener('click', handleAddPlugin);
+      discoverPluginsButton.addEventListener('click', handleDiscoverPlugins);
 
       function setPluginStatus(message, type = 'info') {
         if (!pluginActionStatus) return;
@@ -435,6 +438,72 @@
           pluginSelect.disabled = true;
           addPluginButton.disabled = true;
           setPluginStatus('Failed to load plugin database. Ensure Carla API is running.', 'error');
+        }
+      }
+
+      async function handleDiscoverPlugins() {
+        if (!discoverPluginsButton) return;
+        
+        discoverPluginsButton.disabled = true;
+        setPluginStatus('Discovering plugins from configured paths...', 'info');
+
+        try {
+          const response = await fetch('/api/plugins/discover');
+          if (!response.ok) {
+            throw new Error(`Server responded with ${response.status}`);
+          }
+          const data = await response.json();
+          const discoveredPlugins = data.plugins || [];
+
+          if (discoveredPlugins.length === 0) {
+            setPluginStatus('No plugins discovered. Check your plugin paths configuration.', 'error');
+            discoverPluginsButton.disabled = false;
+            return;
+          }
+
+          // Merge discovered plugins with existing database
+          // Use a Map to avoid duplicates (by id)
+          const pluginMap = new Map();
+          
+          // Add existing plugins
+          availablePlugins.forEach(plugin => {
+            pluginMap.set(plugin.id, { ...plugin, source: 'database' });
+          });
+          
+          // Add discovered plugins (will overwrite duplicates)
+          discoveredPlugins.forEach(plugin => {
+            pluginMap.set(plugin.id, { ...plugin, source: 'discovered' });
+          });
+
+          // Convert back to array
+          availablePlugins = Array.from(pluginMap.values());
+
+          // Update the select dropdown
+          pluginSelect.innerHTML = '';
+          const placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = 'Select a plugin…';
+          pluginSelect.appendChild(placeholder);
+
+          availablePlugins.forEach((plugin) => {
+            const option = document.createElement('option');
+            option.value = plugin.id;
+            const sourceLabel = plugin.source === 'discovered' ? ' [Discovered]' : '';
+            option.textContent = (plugin.display_name || plugin.id) + sourceLabel;
+            if (plugin.description) {
+              option.title = plugin.description;
+            }
+            pluginSelect.appendChild(option);
+          });
+
+          pluginSelect.disabled = false;
+          addPluginButton.disabled = false;
+          setPluginStatus(`Discovered ${discoveredPlugins.length} plugin(s). Total available: ${availablePlugins.length}`, 'success');
+        } catch (error) {
+          console.error('Failed to discover plugins:', error);
+          setPluginStatus(`Failed to discover plugins: ${error.message}`, 'error');
+        } finally {
+          discoverPluginsButton.disabled = false;
         }
       }
 

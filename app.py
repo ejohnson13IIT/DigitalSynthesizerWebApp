@@ -92,6 +92,21 @@ def fetch_plugin_database():
         return jsonify({"error": "Unexpected server error", "detail": str(exc)}), 500
 
 
+@app.route("/api/plugins/discover", methods=["GET"])
+def discover_plugins():
+    """Discover available plugins from configured plugin paths using Carla's discovery system."""
+    try:
+        resp = requests.get(f"{carla_api_base}/plugins/discover", timeout=30)
+        resp.raise_for_status()
+        return jsonify(resp.json())
+    except requests.exceptions.RequestException as err:
+        logger.error("Failed to discover plugins from Carla API: %s", err)
+        return jsonify({"error": "Failed to reach Carla API", "detail": str(err)}), 502
+    except Exception as exc:
+        logger.exception("Unexpected error while discovering plugins")
+        return jsonify({"error": "Unexpected server error", "detail": str(exc)}), 500
+
+
 @app.route("/api/plugins/add", methods=["POST"])
 def proxy_add_plugin():
     """Proxy request to add a plugin via the Carla API."""

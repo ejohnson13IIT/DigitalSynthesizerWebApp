@@ -15,3 +15,10 @@
 # carla:
 #   project_file: "my_custom_project.carxp"
 
+# Example: Add custom plugin paths for readily available plugins
+# custom_plugin_paths:
+#   plugins:
+#     - "/usr/lib/lv2/NewProject.lv2"
+#     - "/home/user/JUCE/MyPlugin/Builds/LinuxMakefile/build/MyPlugin.lv2"
+#     - "~/custom-plugins/MySynth.vst3"
+
