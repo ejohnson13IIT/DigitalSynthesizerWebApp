@@ -1014,10 +1014,21 @@ def move_plugin():
         
         print(f"  new_prev_plugin: {new_prev_plugin}, new_next_plugin: {new_next_plugin}")
         
+        # IMPORTANT: Disconnect any plugins that are no longer final from system
+        # Check all plugins except the one that should be final (the last in chain)
+        final_plugin_id = PLUGIN_CHAIN[-1]
+        for check_id in PLUGIN_CHAIN:
+            if check_id != final_plugin_id:
+                print(f"Ensuring plugin {check_id} is disconnected from system (not final)")
+                disconnect_final_plugin_from_system(check_id)
+        
         # Reconnect the gap left by moving the plugin FIRST
         # The gap is between prev_plugin and next_plugin (if both exist)
         if prev_plugin is not None and next_plugin is not None:
             # There's a gap to reconnect: prev_plugin -> next_plugin
+            # But first, make sure next_plugin is disconnected from system
+            print(f"Ensuring {next_plugin} is disconnected from system before filling gap")
+            disconnect_final_plugin_from_system(next_plugin)
             print(f"Filling gap: {prev_plugin} -> {next_plugin}")
             time.sleep(0.2)
             connect_plugin_chain(prev_plugin, next_plugin)
