@@ -147,6 +147,9 @@ PLUGIN_DATABASE: List[Dict[str, Any]] = []
 # Cache for discovered plugins (not in database)
 DISCOVERED_PLUGINS_CACHE: Dict[str, Dict[str, Any]] = {}
 
+# Binary type constants
+BINARY_NATIVE = getattr(carla_backend, "BINARY_NATIVE", 0)
+
 BACKEND_TYPE_MAP = {
     "PLUGIN_NONE": _maybe_attr(carla_backend, "PLUGIN_NONE", 0),
     "NONE": _maybe_attr(carla_backend, "PLUGIN_NONE", 0),
@@ -566,15 +569,19 @@ def add_plugin():
         unique_id = int(entry.get("unique_id", 0))
         options = _normalize_options(entry.get("options", []))
 
+        # Determine binary type - INTERNAL, LV2, SF2, SFZ, JACK must use BINARY_NATIVE
+        # For VST2/VST3/CLAP/AU, we also use BINARY_NATIVE (native architecture)
+        btype = BINARY_NATIVE
+
         success = host.add_plugin(
-            backend_type,
-            category,
-            filename,
-            name,
-            label,
-            unique_id,
-            None,
-            options,
+            btype,           # Binary type (BINARY_NATIVE for native plugins)
+            backend_type,    # Plugin type (PLUGIN_INTERNAL, PLUGIN_LV2, etc.)
+            filename,        # Plugin filename/path
+            name,            # Plugin name
+            label,           # Plugin label
+            unique_id,       # Plugin unique ID
+            None,           # Extra pointer (not used for most plugin types)
+            options,        # Plugin options
         )
 
         if not success:
