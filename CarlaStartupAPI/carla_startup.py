@@ -148,11 +148,8 @@ PLUGIN_DATABASE: List[Dict[str, Any]] = []
 # Cache for discovered plugins (not in database)
 DISCOVERED_PLUGINS_CACHE: Dict[str, Dict[str, Any]] = {}
 
-# Audio chain: [a2j, plugin_id1, plugin_id2, ..., system]
-# Index 0 = a2j midi bridge (input)
-# Middle indices = plugin IDs in processing order
-# Final index = system playback (output)
-AUDIO_CHAIN: List[Any] = ["a2j", "system"]  # Start with just input and output
+# Plugin chain tracking (list of plugin IDs in order)
+PLUGIN_CHAIN: List[int] = []
 
 # Binary type constants
 BINARY_NATIVE = getattr(carla_backend, "BINARY_NATIVE", 0)
@@ -319,107 +316,7 @@ def jack_disconnect(source: str, destination: str) -> bool:
         print(f"Error disconnecting JACK ports: {e}")
         return False
 
-def disconnect_all_audio_connections():
-    """Disconnect all audio connections in the chain"""
-    # Get all actual connections using jack_lsp and disconnect them
-    try:
-        result = subprocess.run(
-            ["jack_lsp", "-c"],
-            capture_output=True,
-            text=True,
-            timeout=2
-        )
-        
-        if result.returncode == 0:
-            lines = result.stdout.split('\n')
-            current_port = None
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    current_port = None
-                    continue
-                # Port name (not indented)
-                if line and not line.startswith(' '):
-                    current_port = line
-                # Connection (indented)
-                elif current_port and line.startswith(' '):
-                    dest_port = line.strip()
-                    if dest_port:
-                        print(f"Disconnecting: {current_port} -> {dest_port}")
-                        jack_disconnect(current_port, dest_port)
-    except Exception as e:
-        print(f"Error disconnecting all connections: {e}")
-
-def connect_audio_chain_nodes(source: Any, dest: Any):
-    """Connect two nodes in the audio chain (plugin IDs or special strings)"""
-    if source == "a2j":
-        # Connect a2j midi bridge output to plugin input
-        if isinstance(dest, int):
-            # a2j:midi_* -> plugin:input_*
-            plugin_ports = get_plugin_audio_port_count(dest)
-            for ch in range(min(2, plugin_ports["inputs"])):
-                source_port = f"a2j:midi_{ch + 1}"
-                dest_port = get_plugin_jack_port_name(dest, is_output=False, channel=ch)
-                if dest_port:
-                    time.sleep(0.1)
-                    jack_connect(source_port, dest_port)
-    elif dest == "system":
-        # Connect plugin output to system playback
-        if isinstance(source, int):
-            plugin_ports = get_plugin_audio_port_count(source)
-            for ch in range(min(plugin_ports["outputs"], 2)):
-                source_port = get_plugin_jack_port_name(source, is_output=True, channel=ch)
-                dest_port = f"system:playback_{ch + 1}"
-                if source_port:
-                    time.sleep(0.1)
-                    jack_connect(source_port, dest_port)
-    else:
-        # Connect plugin to plugin
-        if isinstance(source, int) and isinstance(dest, int):
-            source_ports = get_plugin_audio_port_count(source)
-            dest_ports = get_plugin_audio_port_count(dest)
-            max_channels = min(source_ports["outputs"], dest_ports["inputs"])
-            for ch in range(max_channels):
-                source_port = get_plugin_jack_port_name(source, is_output=True, channel=ch)
-                dest_port = get_plugin_jack_port_name(dest, is_output=False, channel=ch)
-                if source_port and dest_port:
-                    time.sleep(0.1)
-                    jack_connect(source_port, dest_port)
-
-def rebuild_audio_chain():
-    """Rebuild all JACK connections from scratch based on AUDIO_CHAIN"""
-    print(f"Rebuilding audio chain: {AUDIO_CHAIN}")
-    
-    # First, disconnect everything
-    disconnect_all_audio_connections()
-    time.sleep(0.3)
-    
-    # Then connect everything in order
-    for i in range(len(AUDIO_CHAIN) - 1):
-        source = AUDIO_CHAIN[i]
-        dest = AUDIO_CHAIN[i + 1]
-        print(f"Connecting chain[{i}]={source} -> chain[{i+1}]={dest}")
-        connect_audio_chain_nodes(source, dest)
-        time.sleep(0.2)
-
-def swap_chain_indices(index1: int, index2: int):
-    """Swap two plugins in the audio chain and rebuild connections"""
-    global AUDIO_CHAIN
-    
-    # Validate indices (can't swap a2j or system)
-    if index1 <= 0 or index1 >= len(AUDIO_CHAIN) - 1:
-        raise ValueError(f"Index {index1} is out of bounds (cannot swap a2j or system)")
-    if index2 <= 0 or index2 >= len(AUDIO_CHAIN) - 1:
-        raise ValueError(f"Index {index2} is out of bounds (cannot swap a2j or system)")
-    
-    # Swap
-    AUDIO_CHAIN[index1], AUDIO_CHAIN[index2] = AUDIO_CHAIN[index2], AUDIO_CHAIN[index1]
-    print(f"Swapped indices {index1} and {index2}: {AUDIO_CHAIN}")
-    
-    # Rebuild all connections
-    rebuild_audio_chain()
-
-def _OLD_disconnect_plugin_chain(prev_plugin_id: int, next_plugin_id: int):
+def disconnect_plugin_chain(prev_plugin_id: int, next_plugin_id: int):
     """Disconnect all audio connections between two plugins"""
     prev_ports = get_plugin_audio_port_count(prev_plugin_id)
     next_ports = get_plugin_audio_port_count(next_plugin_id)
@@ -531,8 +428,7 @@ def disconnect_plugin_completely(plugin_id: int):
     # Also disconnect from system explicitly (in case jack_lsp missed it)
     disconnect_final_plugin_from_system(plugin_id)
 
-# Old reroute_plugin_chain function removed - now using rebuild_audio_chain()
-def _OLD_reroute_plugin_chain(insert_position: int, new_plugin_id: int):
+def reroute_plugin_chain(insert_position: int, new_plugin_id: int):
     """
     Reroute JACK connections when a plugin is inserted.
     
@@ -578,19 +474,18 @@ def _OLD_reroute_plugin_chain(insert_position: int, new_plugin_id: int):
         print(f"Connecting plugin {new_plugin_id} -> {next_plugin_id}")
         connect_plugin_chain(new_plugin_id, next_plugin_id)
 
-def sync_audio_chain():
-    """Sync AUDIO_CHAIN with actual loaded plugins"""
-    global AUDIO_CHAIN
-    
+def sync_plugin_chain():
+    """Sync PLUGIN_CHAIN with actual loaded plugins and ensure final plugin is connected to system"""
+    global PLUGIN_CHAIN
     count = host.get_current_plugin_count()
-    # AUDIO_CHAIN = [a2j, plugin_id1, plugin_id2, ..., system]
-    # Keep a2j at start and system at end, update middle plugins
-    plugin_ids = list(range(count))
-    AUDIO_CHAIN = ["a2j"] + plugin_ids + ["system"]
+    PLUGIN_CHAIN = list(range(count))
     
-    print(f"Synced audio chain: {AUDIO_CHAIN}")
-    # Rebuild connections
-    rebuild_audio_chain()
+    # Ensure final plugin is connected to system playback
+    if len(PLUGIN_CHAIN) > 0:
+        final_plugin_id = PLUGIN_CHAIN[-1]
+        connect_final_plugin_to_system(final_plugin_id)
+    
+    print(f"Synced plugin chain: {PLUGIN_CHAIN}")
 
 
 def load_plugin_database() -> None:
@@ -626,7 +521,7 @@ def load_plugin_database() -> None:
 load_plugin_database()
 
 # Initialize plugin chain on startup
-sync_audio_chain()
+sync_plugin_chain()
 
 # === Keep the engine alive ===
 def idle_loop():
@@ -667,7 +562,7 @@ def index():
 @app.route("/plugins", methods=["GET"])
 def list_plugins():
     """List all loaded plugins"""
-    sync_audio_chain()  # Sync chain when listing
+    sync_plugin_chain()  # Sync chain when listing
     plugins = []
     count = host.get_current_plugin_count()
     for i in range(count):
@@ -676,7 +571,7 @@ def list_plugins():
             "id": i,
             "name": info.get("name", ""),
             "label": info.get("label", ""),
-            "chain_position": AUDIO_CHAIN.index(i) if i in AUDIO_CHAIN else -1
+            "chain_position": PLUGIN_CHAIN.index(i) if i in PLUGIN_CHAIN else -1
         })
     return jsonify({"plugins": plugins})
 
@@ -965,85 +860,205 @@ def add_plugin():
         new_plugin_index = host.get_current_plugin_count() - 1
         plugin_info = host.get_plugin_info(new_plugin_index)
         
-        # Add plugin to audio chain (append before "system")
-        # AUDIO_CHAIN = [a2j, plugin_id1, plugin_id2, ..., system]
-        # Insert new plugin before "system"
-        global AUDIO_CHAIN
-        AUDIO_CHAIN.insert(-1, new_plugin_index)  # Insert before last element (system)
+        # Handle plugin chain rerouting - only append to end for now
+        # Get the previous final plugin BEFORE the new plugin was added
+        # The new plugin is at index = current_count - 1, so previous plugins are 0 to current_count - 2
+        prev_final_plugin_id = None
         
-        # Rebuild all connections
-        rebuild_audio_chain()
+        # Sync to get current chain state (this will include the new plugin)
+        sync_plugin_chain()
         
-        # Get chain position (excluding a2j and system)
-        chain_position = len(AUDIO_CHAIN) - 2  # -2 because we exclude a2j (index 0) and system (last)
+        # Find the previous final plugin (the one before the new plugin)
+        if len(PLUGIN_CHAIN) > 1:
+            # The new plugin should be at the end, so previous is second-to-last
+            prev_final_plugin_id = PLUGIN_CHAIN[-2]
+        
+        # If there was a previous final plugin, disconnect it from system and connect to new plugin
+        if prev_final_plugin_id is not None and prev_final_plugin_id != new_plugin_index:
+            # Get plugin names for debugging
+            try:
+                prev_info = host.get_plugin_info(prev_final_plugin_id)
+                new_info = host.get_plugin_info(new_plugin_index)
+                prev_name = prev_info.get("name", f"plugin_{prev_final_plugin_id}")
+                new_name = new_info.get("name", f"plugin_{new_plugin_index}")
+                print(f"Previous final plugin: {prev_name} (ID {prev_final_plugin_id})")
+                print(f"New plugin: {new_name} (ID {new_plugin_index})")
+            except:
+                pass
+            
+            print(f"Disconnecting previous final plugin {prev_final_plugin_id} from system playback")
+            disconnect_final_plugin_from_system(prev_final_plugin_id)
+            print(f"Connecting previous plugin {prev_final_plugin_id} -> new plugin {new_plugin_index}")
+            # Wait a moment for ports to be available
+            time.sleep(0.3)
+            connect_plugin_chain(prev_final_plugin_id, new_plugin_index)
+        else:
+            if prev_final_plugin_id == new_plugin_index:
+                print(f"ERROR: prev_final_plugin_id ({prev_final_plugin_id}) == new_plugin_index ({new_plugin_index}) - skipping connection")
+            else:
+                print(f"No previous plugin found (chain length: {len(PLUGIN_CHAIN)})")
+        
+        # Connect final plugin to system playback
+        print(f"Connecting final plugin {new_plugin_index} to system playback")
+        time.sleep(0.2)
+        connect_final_plugin_to_system(new_plugin_index)
         
         return jsonify({
             "status": "ok", 
             "plugin": plugin_info, 
             "plugin_id": new_plugin_index,
-            "chain_position": chain_position
+            "chain_position": len(PLUGIN_CHAIN) - 1
         })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
 @app.route("/plugins/chain", methods=["GET"])
 def get_plugin_chain():
-    """Get the current audio chain order"""
-    sync_audio_chain()
+    """Get the current plugin chain order"""
+    sync_plugin_chain()
     chain_info = []
-    for idx, node in enumerate(AUDIO_CHAIN):
-        if node == "a2j":
+    for idx, plugin_id in enumerate(PLUGIN_CHAIN):
+        try:
+            plugin_info = host.get_plugin_info(plugin_id)
             chain_info.append({
                 "position": idx,
-                "node": "a2j",
-                "name": "a2j MIDI Bridge",
-                "label": "MIDI Input"
+                "plugin_id": plugin_id,
+                "name": plugin_info.get("name", ""),
+                "label": plugin_info.get("label", "")
             })
-        elif node == "system":
-            chain_info.append({
-                "position": idx,
-                "node": "system",
-                "name": "System Playback",
-                "label": "Audio Output"
-            })
-        else:
-            try:
-                plugin_info = host.get_plugin_info(node)
-                chain_info.append({
-                    "position": idx,
-                    "plugin_id": node,
-                    "name": plugin_info.get("name", ""),
-                    "label": plugin_info.get("label", "")
-                })
-            except:
-                continue
+        except:
+            continue
     return jsonify({"chain": chain_info})
 
 @app.route("/plugins/move", methods=["POST"])
 def move_plugin():
-    """Swap two plugins in the audio chain by index"""
+    """Move a plugin up or down in the processing chain"""
     try:
         data = request.get_json(force=True)
-        index1 = int(data.get("index1"))
-        index2 = int(data.get("index2"))
+        plugin_id = int(data.get("plugin_id"))
+        direction = data.get("direction", "up")  # "up" or "down"
         
-        # Validate indices
-        if index1 < 0 or index1 >= len(AUDIO_CHAIN):
-            return jsonify({"error": f"Index {index1} is out of bounds"}), 400
-        if index2 < 0 or index2 >= len(AUDIO_CHAIN):
-            return jsonify({"error": f"Index {index2} is out of bounds"}), 400
+        sync_plugin_chain()
         
-        # Swap and rebuild
-        swap_chain_indices(index1, index2)
+        if plugin_id not in PLUGIN_CHAIN:
+            return jsonify({"error": f"Plugin {plugin_id} not found in chain"}), 404
+        
+        current_position = PLUGIN_CHAIN.index(plugin_id)
+        new_position = current_position + (1 if direction == "down" else -1)
+        
+        # Validate new position
+        if new_position < 0 or new_position >= len(PLUGIN_CHAIN):
+            return jsonify({"error": f"Cannot move plugin {direction} - already at edge"}), 400
+        
+        # Get adjacent plugins BEFORE moving (for disconnecting)
+        prev_plugin = PLUGIN_CHAIN[current_position - 1] if current_position > 0 else None
+        next_plugin = PLUGIN_CHAIN[current_position + 1] if current_position < len(PLUGIN_CHAIN) - 1 else None
+        
+        # Identify the plugin that will be displaced (the one currently at new_position)
+        displaced_plugin = PLUGIN_CHAIN[new_position] if new_position < len(PLUGIN_CHAIN) else None
+        
+        print(f"Moving plugin {plugin_id} from position {current_position} to {new_position}")
+        print(f"  prev_plugin: {prev_plugin}, next_plugin: {next_plugin}, displaced_plugin: {displaced_plugin}")
+        
+        # Disconnect ALL connections involving the plugin being moved
+        if prev_plugin is not None:
+            print(f"Disconnecting {prev_plugin} -> {plugin_id}")
+            disconnect_plugin_chain(prev_plugin, plugin_id)
+        if next_plugin is not None:
+            print(f"Disconnecting {plugin_id} -> {next_plugin}")
+            disconnect_plugin_chain(plugin_id, next_plugin)
+        
+        # If moving from last position, disconnect from system
+        if current_position == len(PLUGIN_CHAIN) - 1:
+            print(f"Disconnecting {plugin_id} from system (was last)")
+            disconnect_final_plugin_from_system(plugin_id)
+        
+        # Disconnect the displaced plugin completely
+        # The displaced plugin is at new_position, and will be moved when we insert
+        if displaced_plugin is not None and displaced_plugin != plugin_id:
+            # If displaced plugin is currently last, disconnect from system FIRST
+            if new_position == len(PLUGIN_CHAIN) - 1:
+                print(f"Disconnecting {displaced_plugin} from system (was last, will be displaced)")
+                disconnect_final_plugin_from_system(displaced_plugin)
+            
+            # Find what the displaced plugin is currently connected to (in OLD chain)
+            # Note: displaced_prev might be the plugin we're moving if moving down
+            displaced_prev = PLUGIN_CHAIN[new_position - 1] if new_position > 0 else None
+            displaced_next = PLUGIN_CHAIN[new_position + 1] if new_position < len(PLUGIN_CHAIN) - 1 else None
+            
+            # Disconnect from previous (but not if it's the plugin we're moving, we already did that)
+            if displaced_prev is not None and displaced_prev != plugin_id:
+                print(f"Disconnecting {displaced_prev} -> {displaced_plugin} (displaced plugin)")
+                disconnect_plugin_chain(displaced_prev, displaced_plugin)
+            
+            # Disconnect from next
+            if displaced_next is not None:
+                print(f"Disconnecting {displaced_plugin} -> {displaced_next} (displaced plugin)")
+                disconnect_plugin_chain(displaced_plugin, displaced_next)
+            
+            # Also completely disconnect to be safe (handles any missed connections)
+            print(f"Completely disconnecting {displaced_plugin} to ensure clean state")
+            disconnect_plugin_completely(displaced_plugin)
+        
+        # Move plugin in chain
+        PLUGIN_CHAIN.remove(plugin_id)
+        PLUGIN_CHAIN.insert(new_position, plugin_id)
+        print(f"Chain after move: {PLUGIN_CHAIN}")
+        
+        # Wait a moment for disconnections to complete
+        time.sleep(0.3)
+        
+        # NOW get the adjacent plugins AFTER moving (for reconnecting)
+        new_prev_plugin = PLUGIN_CHAIN[new_position - 1] if new_position > 0 else None
+        new_next_plugin = PLUGIN_CHAIN[new_position + 1] if new_position < len(PLUGIN_CHAIN) - 1 else None
+        
+        print(f"  new_prev_plugin: {new_prev_plugin}, new_next_plugin: {new_next_plugin}")
+        
+        # IMPORTANT: Disconnect any plugins that are no longer final from system
+        # Check all plugins except the one that should be final (the last in chain)
+        final_plugin_id = PLUGIN_CHAIN[-1]
+        for check_id in PLUGIN_CHAIN:
+            if check_id != final_plugin_id:
+                print(f"Ensuring plugin {check_id} is disconnected from system (not final)")
+                disconnect_final_plugin_from_system(check_id)
+        
+        # Reconnect the gap left by moving the plugin FIRST
+        # The gap is between prev_plugin and next_plugin (if both exist)
+        if prev_plugin is not None and next_plugin is not None:
+            # There's a gap to reconnect: prev_plugin -> next_plugin
+            # But first, make sure next_plugin is disconnected from system
+            print(f"Ensuring {next_plugin} is disconnected from system before filling gap")
+            disconnect_final_plugin_from_system(next_plugin)
+            print(f"Filling gap: {prev_plugin} -> {next_plugin}")
+            time.sleep(0.2)
+            connect_plugin_chain(prev_plugin, next_plugin)
+        elif prev_plugin is not None and next_plugin is None:
+            # We moved from last position, prev_plugin is now last
+            print(f"Previous plugin {prev_plugin} is now final")
+            time.sleep(0.2)
+            connect_final_plugin_to_system(prev_plugin)
+        
+        # Reconnect the moved plugin in its new position
+        if new_prev_plugin is not None:
+            print(f"Connecting {new_prev_plugin} -> {plugin_id} (moved plugin)")
+            time.sleep(0.2)
+            connect_plugin_chain(new_prev_plugin, plugin_id)
+        if new_next_plugin is not None:
+            print(f"Connecting {plugin_id} -> {new_next_plugin} (moved plugin)")
+            time.sleep(0.2)
+            connect_plugin_chain(plugin_id, new_next_plugin)
+        else:
+            # This is now the final plugin - connect to system
+            print(f"Connecting {plugin_id} -> system (moved plugin is now final)")
+            time.sleep(0.2)
+            connect_final_plugin_to_system(plugin_id)
         
         return jsonify({
             "status": "ok",
-            "index1": index1,
-            "index2": index2,
-            "chain": AUDIO_CHAIN
+            "plugin_id": plugin_id,
+            "old_position": current_position,
+            "new_position": new_position
         })
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
