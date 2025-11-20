@@ -241,18 +241,18 @@ def get_plugin_jack_port_name(plugin_id: int, is_output: bool, channel: int = 0)
         plugin_info = host.get_plugin_info(plugin_id)
         plugin_name = plugin_info.get("name", f"plugin_{plugin_id}")
         
-        # Carla uses format: client_name:plugin_name:audio-out_1 or audio-in_1
-        # For single channel: audio-out or audio-in
+        # Carla uses format: plugin_name:output_1 or plugin_name:input_1
+        # Based on actual JACK port names like "ADLplug:output_1", "3 Band EQ:input_1"
         if is_output:
             if channel == 0:
-                return f"{CLIENT_NAME}:{plugin_name}:audio-out"
+                return f"{plugin_name}:output_1"
             else:
-                return f"{CLIENT_NAME}:{plugin_name}:audio-out_{channel + 1}"
+                return f"{plugin_name}:output_{channel + 1}"
         else:
             if channel == 0:
-                return f"{CLIENT_NAME}:{plugin_name}:audio-in"
+                return f"{plugin_name}:input_1"
             else:
-                return f"{CLIENT_NAME}:{plugin_name}:audio-in_{channel + 1}"
+                return f"{plugin_name}:input_{channel + 1}"
     except Exception as e:
         print(f"Error getting port name for plugin {plugin_id}: {e}")
         return ""
