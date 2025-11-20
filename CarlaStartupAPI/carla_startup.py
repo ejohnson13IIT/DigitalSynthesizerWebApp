@@ -1022,6 +1022,15 @@ def move_plugin():
                 print(f"Ensuring plugin {check_id} is disconnected from system (not final)")
                 disconnect_final_plugin_from_system(check_id)
         
+        # CRITICAL FIX: Ensure prev_plugin is completely disconnected from the moved plugin
+        # This handles cases where the initial disconnect didn't catch all connections
+        # When swapping adjacent plugins, prev_plugin might still be connected to the moved plugin
+        if prev_plugin is not None:
+            print(f"Double-checking {prev_plugin} is completely disconnected from {plugin_id}")
+            disconnect_plugin_chain(prev_plugin, plugin_id)
+            # Also disconnect any other connections from prev_plugin to be safe
+            disconnect_plugin_completely(prev_plugin)
+        
         # Reconnect the gap left by moving the plugin FIRST
         # The gap is between prev_plugin and next_plugin (if both exist)
         if prev_plugin is not None and next_plugin is not None:
