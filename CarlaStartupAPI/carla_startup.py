@@ -478,7 +478,18 @@ def sync_plugin_chain():
     """Sync PLUGIN_CHAIN with actual loaded plugins and ensure final plugin is connected to system"""
     global PLUGIN_CHAIN
     count = host.get_current_plugin_count()
-    PLUGIN_CHAIN = list(range(count))
+    
+    # Only reset if chain is empty, wrong length, or contains invalid plugin IDs
+    # Otherwise preserve the current order (allows manual rearrangements)
+    if len(PLUGIN_CHAIN) == 0 or len(PLUGIN_CHAIN) != count:
+        PLUGIN_CHAIN = list(range(count))
+    else:
+        # Verify all plugin IDs in chain are valid (0 to count-1)
+        valid_plugin_ids = set(range(count))
+        if not all(pid in valid_plugin_ids for pid in PLUGIN_CHAIN):
+            # Chain contains invalid IDs, reset it
+            PLUGIN_CHAIN = list(range(count))
+        # If chain is valid, preserve the order
     
     # Ensure final plugin is connected to system playback
     if len(PLUGIN_CHAIN) > 0:
