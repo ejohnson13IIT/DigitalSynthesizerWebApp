@@ -3,6 +3,7 @@ import os
 import json
 import threading
 import time
+import subprocess
 from typing import Any, Dict, List
 from flask import Flask, jsonify, request
 
@@ -147,6 +148,9 @@ PLUGIN_DATABASE: List[Dict[str, Any]] = []
 # Cache for discovered plugins (not in database)
 DISCOVERED_PLUGINS_CACHE: Dict[str, Dict[str, Any]] = {}
 
+# Plugin chain tracking (list of plugin IDs in order)
+PLUGIN_CHAIN: List[int] = []
+
 # Binary type constants
 BINARY_NATIVE = getattr(carla_backend, "BINARY_NATIVE", 0)
 
@@ -227,6 +231,208 @@ def _resolve_path(path_value: str) -> str:
     return os.path.join(PROJECT_ROOT, expanded)
 
 
+# ============================================
+# JACK Connection Management
+# ============================================
+
+def get_plugin_jack_port_name(plugin_id: int, is_output: bool, channel: int = 0) -> str:
+    """Get JACK port name for a plugin's audio port"""
+    try:
+        plugin_info = host.get_plugin_info(plugin_id)
+        plugin_name = plugin_info.get("name", f"plugin_{plugin_id}")
+        
+        # Carla uses format: client_name:plugin_name:audio-out_1 or audio-in_1
+        # For single channel: audio-out or audio-in
+        if is_output:
+            if channel == 0:
+                return f"{CLIENT_NAME}:{plugin_name}:audio-out"
+            else:
+                return f"{CLIENT_NAME}:{plugin_name}:audio-out_{channel + 1}"
+        else:
+            if channel == 0:
+                return f"{CLIENT_NAME}:{plugin_name}:audio-in"
+            else:
+                return f"{CLIENT_NAME}:{plugin_name}:audio-in_{channel + 1}"
+    except Exception as e:
+        print(f"Error getting port name for plugin {plugin_id}: {e}")
+        return ""
+
+def get_plugin_audio_port_count(plugin_id: int) -> Dict[str, int]:
+    """Get audio input and output count for a plugin"""
+    try:
+        plugin_info = host.get_plugin_info(plugin_id)
+        # Try to get from plugin info, fallback to checking JACK ports
+        return {
+            "inputs": plugin_info.get("audioIns", 2),  # Default to stereo
+            "outputs": plugin_info.get("audioOuts", 2)
+        }
+    except Exception as e:
+        print(f"Error getting port count for plugin {plugin_id}: {e}")
+        return {"inputs": 2, "outputs": 2}
+
+def jack_connect(source: str, destination: str) -> bool:
+    """Connect two JACK ports"""
+    try:
+        result = subprocess.run(
+            ["jack_connect", source, destination],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        if result.returncode == 0:
+            print(f"Connected: {source} -> {destination}")
+            return True
+        else:
+            # Connection might already exist, which is OK
+            if "already connected" in result.stderr.lower() or "already connected" in result.stdout.lower():
+                print(f"Already connected: {source} -> {destination}")
+                return True
+            print(f"Failed to connect {source} -> {destination}: {result.stderr}")
+            return False
+    except Exception as e:
+        print(f"Error connecting JACK ports: {e}")
+        return False
+
+def jack_disconnect(source: str, destination: str) -> bool:
+    """Disconnect two JACK ports"""
+    try:
+        result = subprocess.run(
+            ["jack_disconnect", source, destination],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        if result.returncode == 0:
+            print(f"Disconnected: {source} -> {destination}")
+            return True
+        else:
+            # Disconnection might not exist, which is OK
+            if "not connected" in result.stderr.lower():
+                print(f"Not connected: {source} -> {destination}")
+                return True
+            print(f"Failed to disconnect {source} -> {destination}: {result.stderr}")
+            return False
+    except Exception as e:
+        print(f"Error disconnecting JACK ports: {e}")
+        return False
+
+def disconnect_plugin_chain(prev_plugin_id: int, next_plugin_id: int):
+    """Disconnect all audio connections between two plugins"""
+    prev_ports = get_plugin_audio_port_count(prev_plugin_id)
+    next_ports = get_plugin_audio_port_count(next_plugin_id)
+    
+    # Disconnect all output channels of prev_plugin to all input channels of next_plugin
+    max_channels = min(prev_ports["outputs"], next_ports["inputs"])
+    
+    for ch in range(max_channels):
+        source = get_plugin_jack_port_name(prev_plugin_id, is_output=True, channel=ch)
+        dest = get_plugin_jack_port_name(next_plugin_id, is_output=False, channel=ch)
+        
+        if source and dest:
+            jack_disconnect(source, dest)
+
+def connect_plugin_chain(prev_plugin_id: int, next_plugin_id: int):
+    """Connect all audio outputs of prev_plugin to inputs of next_plugin"""
+    prev_ports = get_plugin_audio_port_count(prev_plugin_id)
+    next_ports = get_plugin_audio_port_count(next_plugin_id)
+    
+    # Connect matching channels (output 1 -> input 1, output 2 -> input 2)
+    max_channels = min(prev_ports["outputs"], next_ports["inputs"])
+    
+    for ch in range(max_channels):
+        source = get_plugin_jack_port_name(prev_plugin_id, is_output=True, channel=ch)
+        dest = get_plugin_jack_port_name(next_plugin_id, is_output=False, channel=ch)
+        
+        if source and dest:
+            # Wait a bit for ports to be available
+            time.sleep(0.1)
+            jack_connect(source, dest)
+
+def connect_final_plugin_to_system(plugin_id: int):
+    """Connect final plugin outputs to system playback"""
+    plugin_ports = get_plugin_audio_port_count(plugin_id)
+    
+    # Connect output 1 -> system:playback_1, output 2 -> system:playback_2
+    for ch in range(min(plugin_ports["outputs"], 2)):
+        source = get_plugin_jack_port_name(plugin_id, is_output=True, channel=ch)
+        dest = f"system:playback_{ch + 1}"
+        
+        if source:
+            time.sleep(0.1)
+            jack_connect(source, dest)
+
+def disconnect_final_plugin_from_system(plugin_id: int):
+    """Disconnect plugin outputs from system playback"""
+    plugin_ports = get_plugin_audio_port_count(plugin_id)
+    
+    # Disconnect output 1 -> system:playback_1, output 2 -> system:playback_2
+    for ch in range(min(plugin_ports["outputs"], 2)):
+        source = get_plugin_jack_port_name(plugin_id, is_output=True, channel=ch)
+        dest = f"system:playback_{ch + 1}"
+        
+        if source:
+            jack_disconnect(source, dest)
+
+def reroute_plugin_chain(insert_position: int, new_plugin_id: int):
+    """
+    Reroute JACK connections when a plugin is inserted.
+    
+    If plugin chain was: A -> B (at positions 0 -> 1)
+    And we insert C at position 1, the chain becomes: A -> C -> B
+    So we need to:
+    1. Disconnect A -> B
+    2. Connect A -> C
+    3. Connect C -> B
+    """
+    global PLUGIN_CHAIN
+    
+    # Wait a moment for plugin to fully initialize
+    time.sleep(0.2)
+    
+    # Update plugin chain - insert new plugin at specified position
+    if insert_position < 0:
+        insert_position = 0
+    if insert_position > len(PLUGIN_CHAIN):
+        insert_position = len(PLUGIN_CHAIN)
+    
+    # If inserting in the middle, disconnect the connection we're breaking
+    if insert_position > 0 and insert_position < len(PLUGIN_CHAIN):
+        prev_plugin_id = PLUGIN_CHAIN[insert_position - 1]
+        next_plugin_id = PLUGIN_CHAIN[insert_position] if insert_position < len(PLUGIN_CHAIN) else None
+        
+        if next_plugin_id is not None:
+            print(f"Disconnecting plugin {prev_plugin_id} -> {next_plugin_id}")
+            disconnect_plugin_chain(prev_plugin_id, next_plugin_id)
+    
+    # Insert new plugin into chain
+    PLUGIN_CHAIN.insert(insert_position, new_plugin_id)
+    
+    # Connect new plugin to previous plugin (if exists)
+    if insert_position > 0:
+        prev_plugin_id = PLUGIN_CHAIN[insert_position - 1]
+        print(f"Connecting plugin {prev_plugin_id} -> {new_plugin_id}")
+        connect_plugin_chain(prev_plugin_id, new_plugin_id)
+    
+    # Connect new plugin to next plugin (if exists)
+    if insert_position < len(PLUGIN_CHAIN) - 1:
+        next_plugin_id = PLUGIN_CHAIN[insert_position + 1]
+        print(f"Connecting plugin {new_plugin_id} -> {next_plugin_id}")
+        connect_plugin_chain(new_plugin_id, next_plugin_id)
+
+def sync_plugin_chain():
+    """Sync PLUGIN_CHAIN with actual loaded plugins and ensure final plugin is connected to system"""
+    global PLUGIN_CHAIN
+    count = host.get_current_plugin_count()
+    PLUGIN_CHAIN = list(range(count))
+    
+    # Ensure final plugin is connected to system playback
+    if len(PLUGIN_CHAIN) > 0:
+        final_plugin_id = PLUGIN_CHAIN[-1]
+        connect_final_plugin_to_system(final_plugin_id)
+    
+    print(f"Synced plugin chain: {PLUGIN_CHAIN}")
+
+
 def load_plugin_database() -> None:
     """Load plugin database from configured path."""
     global PLUGIN_DATABASE
@@ -259,6 +465,9 @@ def load_plugin_database() -> None:
 
 load_plugin_database()
 
+# Initialize plugin chain on startup
+sync_plugin_chain()
+
 # === Keep the engine alive ===
 def idle_loop():
     """Keeps the Carla engine responsive."""
@@ -288,6 +497,8 @@ def index():
             "GET /plugin-db": "List available plugins from configured database",
             "GET /plugins/discover": "Discover available plugins from configured plugin paths",
             "POST /plugins/add": "Add a plugin from the database (body: {plugin_id})",
+            "GET /plugins/chain": "Get the current plugin chain order",
+            "POST /plugins/move": "Move a plugin up/down in chain (body: {plugin_id, direction: 'up'|'down'})",
             "POST /reload_project": "Reload the Carla project (optional body: {path})",
             "POST /shutdown": "Shutdown the Carla engine"
         }
@@ -296,6 +507,7 @@ def index():
 @app.route("/plugins", methods=["GET"])
 def list_plugins():
     """List all loaded plugins"""
+    sync_plugin_chain()  # Sync chain when listing
     plugins = []
     count = host.get_current_plugin_count()
     for i in range(count):
@@ -303,7 +515,8 @@ def list_plugins():
         plugins.append({
             "id": i,
             "name": info.get("name", ""),
-            "label": info.get("label", "")
+            "label": info.get("label", ""),
+            "chain_position": PLUGIN_CHAIN.index(i) if i in PLUGIN_CHAIN else -1
         })
     return jsonify({"plugins": plugins})
 
@@ -554,6 +767,7 @@ def add_plugin():
     try:
         data = request.get_json(force=True)
         plugin_id = data.get("plugin_id")
+        
         if not plugin_id:
             return jsonify({"error": "plugin_id is required"}), 400
 
@@ -590,7 +804,124 @@ def add_plugin():
 
         new_plugin_index = host.get_current_plugin_count() - 1
         plugin_info = host.get_plugin_info(new_plugin_index)
-        return jsonify({"status": "ok", "plugin": plugin_info, "plugin_id": new_plugin_index})
+        
+        # Handle plugin chain rerouting - only append to end for now
+        sync_plugin_chain()
+        
+        if len(PLUGIN_CHAIN) > 0:
+            # There's a previous plugin - disconnect it from system and connect to new plugin
+            prev_plugin_id = PLUGIN_CHAIN[-1]
+            print(f"Disconnecting previous final plugin {prev_plugin_id} from system")
+            disconnect_final_plugin_from_system(prev_plugin_id)
+            print(f"Connecting plugin {prev_plugin_id} -> {new_plugin_index}")
+            connect_plugin_chain(prev_plugin_id, new_plugin_index)
+        
+        # Add new plugin to chain
+        PLUGIN_CHAIN.append(new_plugin_index)
+        
+        # Connect final plugin to system playback
+        print(f"Connecting final plugin {new_plugin_index} to system playback")
+        connect_final_plugin_to_system(new_plugin_index)
+        
+        return jsonify({
+            "status": "ok", 
+            "plugin": plugin_info, 
+            "plugin_id": new_plugin_index,
+            "chain_position": len(PLUGIN_CHAIN) - 1
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+@app.route("/plugins/chain", methods=["GET"])
+def get_plugin_chain():
+    """Get the current plugin chain order"""
+    sync_plugin_chain()
+    chain_info = []
+    for idx, plugin_id in enumerate(PLUGIN_CHAIN):
+        try:
+            plugin_info = host.get_plugin_info(plugin_id)
+            chain_info.append({
+                "position": idx,
+                "plugin_id": plugin_id,
+                "name": plugin_info.get("name", ""),
+                "label": plugin_info.get("label", "")
+            })
+        except:
+            continue
+    return jsonify({"chain": chain_info})
+
+@app.route("/plugins/move", methods=["POST"])
+def move_plugin():
+    """Move a plugin up or down in the processing chain"""
+    try:
+        data = request.get_json(force=True)
+        plugin_id = int(data.get("plugin_id"))
+        direction = data.get("direction", "up")  # "up" or "down"
+        
+        sync_plugin_chain()
+        
+        if plugin_id not in PLUGIN_CHAIN:
+            return jsonify({"error": f"Plugin {plugin_id} not found in chain"}), 404
+        
+        current_position = PLUGIN_CHAIN.index(plugin_id)
+        new_position = current_position + (1 if direction == "down" else -1)
+        
+        # Validate new position
+        if new_position < 0 or new_position >= len(PLUGIN_CHAIN):
+            return jsonify({"error": f"Cannot move plugin {direction} - already at edge"}), 400
+        
+        # Get adjacent plugins
+        prev_plugin = PLUGIN_CHAIN[current_position - 1] if current_position > 0 else None
+        next_plugin = PLUGIN_CHAIN[current_position + 1] if current_position < len(PLUGIN_CHAIN) - 1 else None
+        new_prev_plugin = PLUGIN_CHAIN[new_position - 1] if new_position > 0 else None
+        new_next_plugin = PLUGIN_CHAIN[new_position + 1] if new_position < len(PLUGIN_CHAIN) - 1 else None
+        
+        # Disconnect current connections
+        if prev_plugin is not None:
+            disconnect_plugin_chain(prev_plugin, plugin_id)
+        if next_plugin is not None:
+            disconnect_plugin_chain(plugin_id, next_plugin)
+        
+        # If moving from last position, disconnect from system
+        if current_position == len(PLUGIN_CHAIN) - 1:
+            disconnect_final_plugin_from_system(plugin_id)
+        
+        # If moving to last position, disconnect new last plugin from system
+        if new_position == len(PLUGIN_CHAIN) - 1 and next_plugin is not None:
+            disconnect_final_plugin_from_system(next_plugin)
+        
+        # Move plugin in chain
+        PLUGIN_CHAIN.remove(plugin_id)
+        PLUGIN_CHAIN.insert(new_position, plugin_id)
+        
+        # Reconnect in new position
+        if new_prev_plugin is not None:
+            connect_plugin_chain(new_prev_plugin, plugin_id)
+        if new_next_plugin is not None:
+            connect_plugin_chain(plugin_id, new_next_plugin)
+        else:
+            # This is now the final plugin - connect to system
+            connect_final_plugin_to_system(plugin_id)
+        
+        # Reconnect the plugin that was displaced
+        if direction == "down" and next_plugin is not None:
+            # We moved down, so reconnect the plugin that was below us
+            if prev_plugin is not None:
+                connect_plugin_chain(prev_plugin, next_plugin)
+        elif direction == "up" and prev_plugin is not None:
+            # We moved up, so reconnect the plugin that was above us
+            if next_plugin is not None:
+                connect_plugin_chain(prev_plugin, next_plugin)
+            else:
+                # The plugin we moved up from was last - connect to system
+                connect_final_plugin_to_system(prev_plugin)
+        
+        return jsonify({
+            "status": "ok",
+            "plugin_id": plugin_id,
+            "old_position": current_position,
+            "new_position": new_position
+        })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 

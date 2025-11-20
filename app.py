@@ -122,6 +122,22 @@ def proxy_add_plugin():
         logger.exception("Unexpected error while adding plugin")
         return jsonify({"error": "Unexpected server error", "detail": str(exc)}), 500
 
+
+@app.route("/api/plugins/move", methods=["POST"])
+def proxy_move_plugin():
+    """Proxy request to move a plugin in the chain via the Carla API."""
+    try:
+        payload = request.get_json(force=True)
+        resp = requests.post(f"{carla_api_base}/plugins/move", json=payload, timeout=5)
+        content = resp.json() if resp.content else {}
+        return jsonify(content), resp.status_code
+    except requests.exceptions.RequestException as err:
+        logger.error("Failed to move plugin via Carla API: %s", err)
+        return jsonify({"error": "Failed to reach Carla API", "detail": str(err)}), 502
+    except Exception as exc:
+        logger.exception("Unexpected error while moving plugin")
+        return jsonify({"error": "Unexpected server error", "detail": str(exc)}), 500
+
 @socketio.on("knob_change")
 def handle_knob_change(data):
     try:

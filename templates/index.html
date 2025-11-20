@@ -32,6 +32,51 @@
         background: #222;
         border-radius: 10px;
         border: 1px solid #00ffcc;
+        position: relative;
+      }
+
+      .rack-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        margin-bottom: 10px;
+      }
+
+      .rack-title {
+        margin: 0;
+        flex: 1;
+      }
+
+      .rack-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+
+      .arrow-button {
+        width: 30px;
+        height: 30px;
+        background: #00ffcc;
+        border: none;
+        border-radius: 5px;
+        color: #111;
+        font-size: 18px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s;
+      }
+
+      .arrow-button:hover {
+        background: #00ddaa;
+      }
+
+      .arrow-button:disabled {
+        background: #555;
+        cursor: not-allowed;
+        opacity: 0.5;
       }
 
       .knob-wrapper {
@@ -226,14 +271,43 @@
         return value.toFixed(3).replace(/\.?0+$/, '');
       }
 
-      function createRack(plugin) {
+      function createRack(plugin, chainPosition, chainLength) {
         const rack = document.createElement('div');
         rack.className = 'rack';
         rack.dataset.pluginId = plugin.id;
+        rack.dataset.chainPosition = chainPosition;
+
+        // Create header with title and controls
+        const headerContainer = document.createElement('div');
+        headerContainer.className = 'rack-header';
 
         const header = document.createElement('h2');
+        header.className = 'rack-title';
         header.textContent = `${plugin.name || 'Plugin'} (ID ${plugin.id})`;
-        rack.appendChild(header);
+        headerContainer.appendChild(header);
+
+        // Create arrow controls
+        const controls = document.createElement('div');
+        controls.className = 'rack-controls';
+
+        const upArrow = document.createElement('button');
+        upArrow.className = 'arrow-button';
+        upArrow.textContent = '↑';
+        upArrow.title = 'Move up in chain';
+        upArrow.disabled = chainPosition === 0;
+        upArrow.addEventListener('click', () => movePluginInChain(plugin.id, 'up'));
+
+        const downArrow = document.createElement('button');
+        downArrow.className = 'arrow-button';
+        downArrow.textContent = '↓';
+        downArrow.title = 'Move down in chain';
+        downArrow.disabled = chainPosition === chainLength - 1;
+        downArrow.addEventListener('click', () => movePluginInChain(plugin.id, 'down'));
+
+        controls.appendChild(upArrow);
+        controls.appendChild(downArrow);
+        headerContainer.appendChild(controls);
+        rack.appendChild(headerContainer);
 
         plugin.parameters.forEach((param) => {
           const knob = createKnob(plugin.id, param);
@@ -241,6 +315,27 @@
         });
 
         return rack;
+      }
+
+      async function movePluginInChain(pluginId, direction) {
+        try {
+          const response = await fetch('/api/plugins/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ plugin_id: pluginId, direction: direction }),
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || `Server responded with ${response.status}`);
+          }
+
+          // Reload plugins to reflect new chain order
+          await loadPlugins();
+        } catch (error) {
+          console.error('Failed to move plugin:', error);
+          setPluginStatus(`Failed to move plugin: ${error.message}`, 'error');
+        }
       }
 
       function createKnob(pluginId, param) {

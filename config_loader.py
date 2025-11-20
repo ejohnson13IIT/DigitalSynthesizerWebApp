@@ -94,7 +94,3 @@ def get_plugin_database_config() -> Dict[str, Any]:
     """Get plugin database configuration"""
     return get_config().get("plugin_database", {})
 
-
-def get_custom_plugin_paths_config() -> Dict[str, Any]:
-    """Get custom plugin paths configuration"""
-    return get_config().get("custom_plugin_paths", {})
