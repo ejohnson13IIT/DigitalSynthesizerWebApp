@@ -339,14 +339,20 @@ def connect_plugin_chain(prev_plugin_id: int, next_plugin_id: int):
     # Connect matching channels (output 1 -> input 1, output 2 -> input 2)
     max_channels = min(prev_ports["outputs"], next_ports["inputs"])
     
+    print(f"Connecting plugin {prev_plugin_id} -> {next_plugin_id} ({max_channels} channels)")
+    
     for ch in range(max_channels):
         source = get_plugin_jack_port_name(prev_plugin_id, is_output=True, channel=ch)
         dest = get_plugin_jack_port_name(next_plugin_id, is_output=False, channel=ch)
+        
+        print(f"  Channel {ch}: {source} -> {dest}")
         
         if source and dest:
             # Wait a bit for ports to be available
             time.sleep(0.1)
             jack_connect(source, dest)
+        else:
+            print(f"  WARNING: Missing port names (source={source}, dest={dest})")
 
 def connect_final_plugin_to_system(plugin_id: int):
     """Connect final plugin outputs to system playback"""
@@ -806,21 +812,46 @@ def add_plugin():
         plugin_info = host.get_plugin_info(new_plugin_index)
         
         # Handle plugin chain rerouting - only append to end for now
+        # Get the previous final plugin BEFORE the new plugin was added
+        # The new plugin is at index = current_count - 1, so previous plugins are 0 to current_count - 2
+        prev_final_plugin_id = None
+        
+        # Sync to get current chain state (this will include the new plugin)
         sync_plugin_chain()
         
-        if len(PLUGIN_CHAIN) > 0:
-            # There's a previous plugin - disconnect it from system and connect to new plugin
-            prev_plugin_id = PLUGIN_CHAIN[-1]
-            print(f"Disconnecting previous final plugin {prev_plugin_id} from system")
-            disconnect_final_plugin_from_system(prev_plugin_id)
-            print(f"Connecting plugin {prev_plugin_id} -> {new_plugin_index}")
-            connect_plugin_chain(prev_plugin_id, new_plugin_index)
+        # Find the previous final plugin (the one before the new plugin)
+        if len(PLUGIN_CHAIN) > 1:
+            # The new plugin should be at the end, so previous is second-to-last
+            prev_final_plugin_id = PLUGIN_CHAIN[-2]
         
-        # Add new plugin to chain
-        PLUGIN_CHAIN.append(new_plugin_index)
+        # If there was a previous final plugin, disconnect it from system and connect to new plugin
+        if prev_final_plugin_id is not None and prev_final_plugin_id != new_plugin_index:
+            # Get plugin names for debugging
+            try:
+                prev_info = host.get_plugin_info(prev_final_plugin_id)
+                new_info = host.get_plugin_info(new_plugin_index)
+                prev_name = prev_info.get("name", f"plugin_{prev_final_plugin_id}")
+                new_name = new_info.get("name", f"plugin_{new_plugin_index}")
+                print(f"Previous final plugin: {prev_name} (ID {prev_final_plugin_id})")
+                print(f"New plugin: {new_name} (ID {new_plugin_index})")
+            except:
+                pass
+            
+            print(f"Disconnecting previous final plugin {prev_final_plugin_id} from system playback")
+            disconnect_final_plugin_from_system(prev_final_plugin_id)
+            print(f"Connecting previous plugin {prev_final_plugin_id} -> new plugin {new_plugin_index}")
+            # Wait a moment for ports to be available
+            time.sleep(0.3)
+            connect_plugin_chain(prev_final_plugin_id, new_plugin_index)
+        else:
+            if prev_final_plugin_id == new_plugin_index:
+                print(f"ERROR: prev_final_plugin_id ({prev_final_plugin_id}) == new_plugin_index ({new_plugin_index}) - skipping connection")
+            else:
+                print(f"No previous plugin found (chain length: {len(PLUGIN_CHAIN)})")
         
         # Connect final plugin to system playback
         print(f"Connecting final plugin {new_plugin_index} to system playback")
+        time.sleep(0.2)
         connect_final_plugin_to_system(new_plugin_index)
         
         return jsonify({
