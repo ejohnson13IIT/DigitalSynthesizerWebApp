@@ -17,17 +17,32 @@ lastVal2=0
 lastVal3=0
 lastVal4=0
 
+# while True:
+# 	if (abs(int(pot1.value*100)-lastVal1)>2):
+# 		client.send_message("/WebAppHost/1/set_parameter_value", [0, pot1.value*48-24])
+# 	if (abs(int(pot2.value*100)-lastVal2)>2):
+# 		client.send_message("/WebAppHost/1/set_parameter_value", [1, pot2.value*48-24])
+# 	if (abs(int(pot3.value*100)-lastVal3)>2):
+# 		client.send_message("/WebAppHost/1/set_parameter_value", [2, pot3.value*48-24])
+# 	if (abs(int(pot4.value*100)-lastVal4)>2):
+# 		client.send_message("/WebAppHost/1/set_parameter_value", [3, pot4.value*48-24])
+# 	lastVal1=int(pot1.value*100)
+# 	lastVal2=int(pot2.value*100)
+# 	lastVal3=int(pot3.value*100)
+# 	lastVal4=int(pot4.value*100)	
+# 	sleep(0.5)
+
 while True:
-	if (abs(int(pot1.value*100)-lastVal1)>2):
-		client.send_message("/WebAppHost/1/set_parameter_value", [0, pot1.value*48-24])
-	if (abs(int(pot2.value*100)-lastVal2)>2):
-		client.send_message("/WebAppHost/1/set_parameter_value", [1, pot2.value*48-24])
-	if (abs(int(pot3.value*100)-lastVal3)>2):
-		client.send_message("/WebAppHost/1/set_parameter_value", [2, pot3.value*48-24])
-	if (abs(int(pot4.value*100)-lastVal4)>2):
-		client.send_message("/WebAppHost/1/set_parameter_value", [3, pot4.value*48-24])
-	lastVal1=int(pot1.value*100)
-	lastVal2=int(pot2.value*100)
-	lastVal3=int(pot3.value*100)
-	lastVal4=int(pot4.value*100)	
+	if abs(int(pot1.value * 100) - lastVal1) > 2:
+		client.send_message("/WebAppHost/0/set_parameter_value", [0, pot1.value])
+	if abs(int(pot2.value * 100) - lastVal2) > 2:
+		client.send_message("/WebAppHost/0/set_parameter_value", [5, pot2.value])
+	if abs(int(pot3.value * 100) - lastVal3) > 2:
+		client.send_message("/WebAppHost/0/set_parameter_value", [9, pot3.value])
+	if abs(int(pot4.value * 100) - lastVal4) > 2:
+		client.send_message("/WebAppHost/0/set_parameter_value", [13, pot4.value])
+	lastVal1 = int(pot1.value * 100)
+	lastVal2 = int(pot2.value * 100)
+	lastVal3 = int(pot3.value * 100)
+	lastVal4 = int(pot4.value * 100)
 	sleep(0.5)
