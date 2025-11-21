@@ -40,6 +40,10 @@ a2jmidid -e &
 #Step 5: Actiavte Virtual Environment
 #   cd ~/DigitalSynthesizerWebApp
 #   source venv/bin/activate
+*Step 6:
+#   python carla_startup.py
+#   python app.py
+#   jack_connect "a2j:AKM320 [24] (capture): AKM320 MIDI 1" "ADLplug:events-in"
 
 # ============================================
 # Troubleshooting:

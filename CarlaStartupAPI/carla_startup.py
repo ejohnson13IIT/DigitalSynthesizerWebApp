@@ -366,7 +366,7 @@ def connect_final_plugin_to_system(plugin_id: int):
         if source:
             time.sleep(0.1)
             jack_connect(source, dest)
-
+            
 def disconnect_final_plugin_from_system(plugin_id: int):
     """Disconnect plugin outputs from system playback"""
     plugin_ports = get_plugin_audio_port_count(plugin_id)
@@ -1080,6 +1080,8 @@ def move_plugin():
             print(f"Ensuring final plugin {final_plugin_id} is connected to system playback")
             time.sleep(0.1)
             connect_final_plugin_to_system(final_plugin_id)
+            jack_connect("a2j:AKM320 [24] (capture): AKM320 MIDI 1", "ADLplug:events-in")
+
         
         return jsonify({
             "status": "ok",
@@ -1104,6 +1106,7 @@ def shutdown():
 
 # === Run server ===
 if __name__ == "__main__":
+    print ("PYTHON_READY", flush=True)
     api_host = api_cfg.get("host", "0.0.0.0")
     api_port = api_cfg.get("port", 8080)
     app.run(host=api_host, port=api_port)

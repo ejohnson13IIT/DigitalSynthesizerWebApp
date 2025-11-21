@@ -2,7 +2,7 @@
 <!DOCTYPE CARLA-PROJECT>
 <CARLA-PROJECT VERSION='2.5'>
  <EngineSettings>
-  <ForceStereo>true</ForceStereo>
+  <ForceStereo>false</ForceStereo>
   <PreferPluginBridges>false</PreferPluginBridges>
   <PreferUiBridges>true</PreferUiBridges>
   <UIsAlwaysOnTop>false</UIsAlwaysOnTop>
@@ -4313,8 +4313,24 @@ YXRlPgA=
 
  <ExternalPatchbay>
   <Connection>
-   <Source>a2j:AKM320 [20] (capture): AKM320 MIDI 1</Source>
-   <Target>Carla:events-in</Target>
+   <Source>ADLplug:output_1</Source>
+   <Target>3 Band EQ:input_1</Target>
+  </Connection>
+  <Connection>
+   <Source>ADLplug:output_2</Source>
+   <Target>3 Band EQ:input_2</Target>
+  </Connection>
+  <Connection>
+   <Source>3 Band EQ:output_1</Source>
+   <Target>system:playback_1</Target>
+  </Connection>
+  <Connection>
+   <Source>3 Band EQ:output_2</Source>
+   <Target>system:playback_2</Target>
+  </Connection>
+  <Connection>
+   <Source>a2j:AKM320 [28] (capture): AKM320 MIDI 1</Source>
+   <Target>ADLplug:events-in</Target>
   </Connection>
   <Connection>
    <Source>Carla:audio-out1</Source>

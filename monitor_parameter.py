@@ -22,7 +22,7 @@ api_port = api_cfg.get("port", 8080)
 # Use localhost for API access (even if host is 0.0.0.0)
 BASE_URL = f"http://127.0.0.1:{api_port}"
 
-def get_parameter_value(plugin_id=0, parameter_id=0):
+def get_parameter_value(plugin_id=1, parameter_id=0):
     """Get the value of a specific parameter from a plugin."""
     try:
         # Get all parameters for the plugin
@@ -68,7 +68,7 @@ def main():
     try:
         while True:
             # Get the parameter value
-            param_info = get_parameter_value(plugin_id=0, parameter_id=0)
+            param_info = get_parameter_value(plugin_id=1, parameter_id=0)
             
             if param_info:
                 timestamp = datetime.now().strftime("%H:%M:%S")

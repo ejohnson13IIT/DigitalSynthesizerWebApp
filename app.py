@@ -180,6 +180,7 @@ def handle_knob_change(data):
         logger.error(f"Error in handle_knob_change: {e}")
 
 if __name__ == "__main__":
+    print("WEBAPP_READY", flush=True)
     flask_host = flask_cfg.get("host", "0.0.0.0")
     flask_port = flask_cfg.get("port", 5000)
     flask_debug = flask_cfg.get("debug", False)
