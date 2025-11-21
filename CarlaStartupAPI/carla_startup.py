@@ -141,6 +141,7 @@ def _maybe_option(module: Any, name: str) -> int:
     return getattr(module, name, 0)
 # ==== Display Plugin UI ====
 host.show_custom_ui(0, True)
+time.sleep(5)
 
 # === Plugin Database Loading ===
 PLUGIN_DB_PATH = plugin_db_cfg.get("path")
