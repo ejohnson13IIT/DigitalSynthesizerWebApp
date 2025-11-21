@@ -139,10 +139,6 @@ def _maybe_attr(module: Any, name: str, fallback: Any = None) -> Any:
 def _maybe_option(module: Any, name: str) -> int:
     """Safely fetch plugin option constants, defaulting to 0."""
     return getattr(module, name, 0)
-# ==== Display Plugin UI ====
-host.show_custom_ui(0, True)
-time.sleep(5)
-
 # === Plugin Database Loading ===
 PLUGIN_DB_PATH = plugin_db_cfg.get("path")
 PLUGIN_DATABASE: List[Dict[str, Any]] = []
@@ -1109,6 +1105,7 @@ def shutdown():
 # === Run server ===
 if __name__ == "__main__":
     print ("PYTHON_READY", flush=True)
+    host.show_custom_ui(0, True)
     api_host = api_cfg.get("host", "0.0.0.0")
     api_port = api_cfg.get("port", 8080)
     app.run(host=api_host, port=api_port)
