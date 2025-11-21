@@ -117,12 +117,10 @@ echo "Python is ready, connecting JACK ports..."
 # Find the AKM320 MIDI port dynamically (handles changing ALSA card numbers)
 AKM320_PORT=$(jack_lsp | grep -E "a2j:AKM320 \[[0-9]+\] \(capture\): AKM320 MIDI 1" | head -n1)
 
-if [ -z "$AKM320_PORT" ]; then
-    echo "? Warning: Could not find AKM320 MIDI port"
-else
-    echo "Connecting $AKM320_PORT to ADLplug:events-in"
-    jack_connect "$AKM320_PORT" "ADLplug:events-in" 2>/dev/null
-fi
+
+echo "Connecting $AKM320_PORT to ADLplug:events-in"
+jack_connect "$AKM320_PORT" "ADLplug:events-in" 2>/dev/null
+
 
 cd ..
 cd potdemo/
