@@ -140,7 +140,7 @@ def _maybe_option(module: Any, name: str) -> int:
     """Safely fetch plugin option constants, defaulting to 0."""
     return getattr(module, name, 0)
 # ==== Display Plugin UI ====
-host.show_plugin_ui(0, show=True)
+host.show_custom_ui(0, True)
 
 # === Plugin Database Loading ===
 PLUGIN_DB_PATH = plugin_db_cfg.get("path")
