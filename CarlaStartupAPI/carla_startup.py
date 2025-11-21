@@ -127,7 +127,7 @@ if not loaded:
     sys.exit(1)
 print("Project loaded successfully!")
 print("Plugins in project:", host.get_current_plugin_count())
-host.show_plugin_ui(0, show=True)
+
 
 def _maybe_attr(module: Any, name: str, fallback: Any = None) -> Any:
     """Safely fetch an attribute from a module, returning fallback if missing."""
@@ -139,7 +139,8 @@ def _maybe_attr(module: Any, name: str, fallback: Any = None) -> Any:
 def _maybe_option(module: Any, name: str) -> int:
     """Safely fetch plugin option constants, defaulting to 0."""
     return getattr(module, name, 0)
-
+# ==== Display Plugin UI ====
+host.show_plugin_ui(0, show=True)
 
 # === Plugin Database Loading ===
 PLUGIN_DB_PATH = plugin_db_cfg.get("path")
