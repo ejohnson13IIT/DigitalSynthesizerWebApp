@@ -27,9 +27,29 @@ fi
 
 # Check for known failure text in log
 if grep -q "Failed to open server" "$LOG"; then
-    echo "? JACK server failed to start"
+    echo "? JACK server failed to start, trying -dhw:2..."
     kill "$JACK_PID" 2>/dev/null
-    exit 1
+    > "$LOG"
+    
+    # Try with -dhw:2
+    jackd -dalsa -dhw:2 -r44100 -p1024 -n2 -S >"$LOG" 2>&1 &
+    
+    JACK_PID=$!
+    
+    sleep 2
+    
+    if ! kill -0 "$JACK_PID" 2>/dev/null; then
+        echo "? JACK crashed immediately with -dhw:2"
+        echo "--- LOG ---"
+        cat "$LOG"
+        exit 1
+    fi
+    
+    if grep -q "Failed to open server" "$LOG"; then
+        echo "? JACK server failed to start with -dhw:2"
+        kill "$JACK_PID" 2>/dev/null
+        exit 1
+    fi
 fi
 
 echo "JACK started successfully (PID $JACK_PID)"
