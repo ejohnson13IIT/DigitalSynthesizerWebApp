@@ -117,6 +117,7 @@ if [[ $1 == "online" ]]; then
     done
 
     echo "Webapp started successfully (PID $WEB_PID)"
+    cd CarlaStartupAPI
 fi
 
 # Now run your jack_connect
