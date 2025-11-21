@@ -1113,6 +1113,7 @@ if __name__ == "__main__":
     print ("PYTHON_READY", flush=True)
     api_host = api_cfg.get("host", "0.0.0.0")
     api_port = api_cfg.get("port", 8080)
-    app.run(host=api_host, port=api_port)
     host.show_custom_ui(0, True)
+    app.run(host=api_host, port=api_port)
+
     
