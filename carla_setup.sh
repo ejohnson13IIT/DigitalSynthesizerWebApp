@@ -4,6 +4,9 @@ killall jackd
 killall a2jmidid
 pkill -9 python 2>/dev/null
 
+# Wait for audio devices to be released
+sleep 2
+
 LOG="/tmp/jack_startup.log"
 
 # Clear old log
