@@ -70,6 +70,26 @@ fi
 echo "A2JMIDI Started Successfully (PID $a2jmidi_PID)"
 
 source venv/bin/activate
+
+cd CarlaStartupAPI
+python carla_startup.py > /tmp/carla_boot.log 2>&1 &
+PY_PID=$!
+
+echo "Waiting for python to initialize..."
+
+# Loop until PYTHON_READY is printed
+while ! grep -q "PYTHON_READY" /tmp/carla_boot.log; do
+    # Also check if python crashed
+    if ! kill -0 $PY_PID 2>/dev/null; then
+        echo "? Python crashed before startup"
+        cat /tmp/carla_boot.log
+        exit 1
+    fi
+    sleep 0.2
+done
+
+echo "Python is ready, connecting JACK ports..."
+
 if [[ $1 == "online" ]]; then
     echo "Starting Flask webapp (app.py)..."
 
@@ -94,24 +114,6 @@ if [[ $1 == "online" ]]; then
 
     echo "Webapp started successfully (PID $WEB_PID)"
 fi
-cd CarlaStartupAPI
-python carla_startup.py > /tmp/carla_boot.log 2>&1 &
-PY_PID=$!
-
-echo "Waiting for python to initialize..."
-
-# Loop until PYTHON_READY is printed
-while ! grep -q "PYTHON_READY" /tmp/carla_boot.log; do
-    # Also check if python crashed
-    if ! kill -0 $PY_PID 2>/dev/null; then
-        echo "? Python crashed before startup"
-        cat /tmp/carla_boot.log
-        exit 1
-    fi
-    sleep 0.2
-done
-
-echo "Python is ready, connecting JACK ports..."
 
 # Now run your jack_connect
 # Find the AKM320 MIDI port dynamically (handles changing ALSA card numbers)
