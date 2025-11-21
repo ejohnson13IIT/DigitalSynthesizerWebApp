@@ -70,6 +70,30 @@ fi
 echo "A2JMIDI Started Successfully (PID $a2jmidi_PID)"
 
 source venv/bin/activate
+if [[ $1 == "online" ]]; then
+    echo "Starting Flask webapp (app.py)..."
+
+    # Clear log
+    > /tmp/webapp.log
+
+    # Start your Flask webapp
+    python app.py > /tmp/webapp.log 2>&1 &
+    WEB_PID=$!
+
+    # Wait for a READY signal from app.py
+    echo "Waiting for webapp to initialize..."
+
+    while ! grep -q "WEBAPP_READY" /tmp/webapp.log; do
+        if ! kill -0 $WEB_PID 2>/dev/null; then
+            echo "? Webapp crashed before startup"
+            cat /tmp/webapp.log
+            exit 1
+        fi
+        sleep 0.2
+    done
+
+    echo "Webapp started successfully (PID $WEB_PID)"
+fi
 cd CarlaStartupAPI
 python carla_startup.py > /tmp/carla_boot.log 2>&1 &
 PY_PID=$!
