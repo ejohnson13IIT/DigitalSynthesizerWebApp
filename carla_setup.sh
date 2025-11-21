@@ -100,6 +100,7 @@ if [[ $1 == "online" ]]; then
     > /tmp/webapp.log
 
     # Start your Flask webapp
+    cd ..
     python app.py > /tmp/webapp.log 2>&1 &
     WEB_PID=$!
 
