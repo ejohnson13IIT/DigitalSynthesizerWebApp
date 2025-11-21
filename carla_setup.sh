@@ -128,7 +128,7 @@ echo "Connecting $AKM320_PORT to ADLplug:events-in"
 jack_connect "$AKM320_PORT" "ADLplug:events-in"
 
 
-cd DigitalSynthesizerWebApp
+cd ..
 cd potdemo/
 python pot_test.py
 
