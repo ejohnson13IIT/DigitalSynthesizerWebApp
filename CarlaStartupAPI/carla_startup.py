@@ -127,7 +127,7 @@ if not loaded:
     sys.exit(1)
 print("Project loaded successfully!")
 print("Plugins in project:", host.get_current_plugin_count())
-
+host.show_plugin_ui(0, show=True)
 
 def _maybe_attr(module: Any, name: str, fallback: Any = None) -> Any:
     """Safely fetch an attribute from a module, returning fallback if missing."""
