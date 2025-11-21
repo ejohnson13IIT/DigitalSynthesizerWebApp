@@ -17,15 +17,7 @@ JACK_PID=$!
 # Wait up to 2 seconds to see if JACK dies or prints an error
 sleep 2
 
-# Check if process is still alive
-if ! kill -0 "$JACK_PID" 2>/dev/null; then
-    echo "? JACK crashed immediately"
-    echo "--- LOG ---"
-    cat "$LOG"
-    exit 1
-fi
-
-# Check for known failure text in log
+# Check for known failure text in log first
 if grep -q "Failed to open server" "$LOG"; then
     echo "? JACK server failed to start, trying -dhw:2..."
     kill "$JACK_PID" 2>/dev/null
@@ -50,6 +42,14 @@ if grep -q "Failed to open server" "$LOG"; then
         kill "$JACK_PID" 2>/dev/null
         exit 1
     fi
+fi
+
+# Check if process is still alive
+if ! kill -0 "$JACK_PID" 2>/dev/null; then
+    echo "? JACK crashed immediately"
+    echo "--- LOG ---"
+    cat "$LOG"
+    exit 1
 fi
 
 echo "JACK started successfully (PID $JACK_PID)"
