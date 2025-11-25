@@ -43,11 +43,11 @@ def map_pot_to_mix(pot_value):
 
 def get_parameter_indices(voice):
     """Get the base parameter indices for the selected voice"""
-    # voice 0 -> parameters 1, 2, 3
-    # voice 1 -> parameters 4, 5, 6
-    # voice 2 -> parameters 7, 8, 9
-    # voice 3 -> parameters 10, 11, 12
-    base = voice * 3 + 1
+    # voice 0 -> parameters 0, 1, 2
+    # voice 1 -> parameters 3, 4, 5
+    # voice 2 -> parameters 6, 7, 8
+    # voice 3 -> parameters 9, 10, 11
+    base = voice * 3
     return base, base + 1, base + 2  # octave, semitone, mix
 
 # Main loop
@@ -63,7 +63,6 @@ while True:
     param_octave, param_semitone, param_mix = get_parameter_indices(current_voice)
     
     # Check for knob changes and send OSC messages
-    # Pot 1 = octave
     if abs(raw1 - last_raw1) > 2:
         octave_value = map_pot_to_octave(pot1.value)
         client.send_message("/Carla/0/set_parameter_value", [param_octave, octave_value])
