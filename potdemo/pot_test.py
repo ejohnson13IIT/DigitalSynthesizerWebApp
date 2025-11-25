@@ -80,7 +80,11 @@ while True:
         client.send_message("/Carla/0/set_parameter_value", [param_mix, mix_value])
         last_raw3 = raw3
     
-    # Pot 4 = voice selector (no OSC needed, just used to determine parameter indices)
-    last_raw4 = raw4
+    # Pot 4 = voice selector (also sends to parameter index 12)
+    if abs(raw4 - last_raw4) > 2:
+        # Send discrete voice selector value (0, 1, 2, 3) to parameter index 12
+        pot4_value = map_pot_to_voice_selector(pot4.value)
+        client.send_message("/Carla/0/set_parameter_value", [12, pot4_value])
+        last_raw4 = raw4
     
     sleep(0.05)  # Faster polling for smoother response
