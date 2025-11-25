@@ -37,18 +37,22 @@ while True:
 	if abs(int(pot1.value * 100) - lastVal1) > 2:
 		octave_value = map_pot_to_octave(pot1.value)
 		client.send_message("/Carla/0/set_parameter_value", [0, octave_value])
+		print(f"Pot1 -> Parameter 0 (octave): {octave_value}")
 	
 	if abs(int(pot2.value * 100) - lastVal2) > 2:
 		semitone_value = map_pot_to_semitone(pot2.value)
 		client.send_message("/Carla/0/set_parameter_value", [1, semitone_value])
+		print(f"Pot2 -> Parameter 1 (semitone): {semitone_value:.2f}")
 	
 	if abs(int(pot3.value * 100) - lastVal3) > 2:
 		mix_value = map_pot_to_mix(pot3.value)
 		client.send_message("/Carla/0/set_parameter_value", [2, mix_value])
+		print(f"Pot3 -> Parameter 2 (mix): {mix_value:.2f}")
 	
 	if abs(int(pot4.value * 100) - lastVal4) > 2:
 		octave_value = map_pot_to_octave(pot4.value)
 		client.send_message("/Carla/0/set_parameter_value", [3, octave_value])
+		print(f"Pot4 -> Parameter 3 (octave): {octave_value}")
 	
 	lastVal1 = int(pot1.value * 100)
 	lastVal2 = int(pot2.value * 100)
