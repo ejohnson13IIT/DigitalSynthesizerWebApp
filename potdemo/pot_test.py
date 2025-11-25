@@ -33,16 +33,26 @@ def map_pot_to_mix(pot_value):
     """Map to mix (0.00 to 1.00) continuous"""
     return pot_value
 
+def normalize_octave(octave_value):
+    """Normalize octave (-2 to 2) to (0.0 to 1.0) for OSC"""
+    return (octave_value + 2) / 4.0
+
+def normalize_semitone(semitone_value):
+    """Normalize semitone (-12.0 to 12.0) to (0.0 to 1.0) for OSC"""
+    return (semitone_value + 12.0) / 24.0
+
 while True:
 	if abs(int(pot1.value * 100) - lastVal1) > 2:
 		octave_value = map_pot_to_octave(pot1.value)
-		client.send_message("/Carla/0/set_parameter_value", [0, octave_value])
-		print(f"Pot1 -> Parameter 0 (octave): {octave_value}")
+		octave_normalized = normalize_octave(octave_value)
+		client.send_message("/Carla/0/set_parameter_value", [0, octave_normalized])
+		print(f"Pot1 -> Parameter 0 (octave): {octave_value} (normalized: {octave_normalized:.3f})")
 	
 	if abs(int(pot2.value * 100) - lastVal2) > 2:
 		semitone_value = map_pot_to_semitone(pot2.value)
-		client.send_message("/Carla/0/set_parameter_value", [1, semitone_value])
-		print(f"Pot2 -> Parameter 1 (semitone): {semitone_value:.2f}")
+		semitone_normalized = normalize_semitone(semitone_value)
+		client.send_message("/Carla/0/set_parameter_value", [1, semitone_normalized])
+		print(f"Pot2 -> Parameter 1 (semitone): {semitone_value:.2f} (normalized: {semitone_normalized:.3f})")
 	
 	if abs(int(pot3.value * 100) - lastVal3) > 2:
 		mix_value = map_pot_to_mix(pot3.value)
@@ -51,8 +61,9 @@ while True:
 	
 	if abs(int(pot4.value * 100) - lastVal4) > 2:
 		octave_value = map_pot_to_octave(pot4.value)
-		client.send_message("/Carla/0/set_parameter_value", [3, octave_value])
-		print(f"Pot4 -> Parameter 3 (octave): {octave_value}")
+		octave_normalized = normalize_octave(octave_value)
+		client.send_message("/Carla/0/set_parameter_value", [3, octave_normalized])
+		print(f"Pot4 -> Parameter 3 (octave): {octave_value} (normalized: {octave_normalized:.3f})")
 	
 	lastVal1 = int(pot1.value * 100)
 	lastVal2 = int(pot2.value * 100)
