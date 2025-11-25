@@ -4,10 +4,10 @@ from gpiozero import PWMLED, MCP3008
 from time import sleep
 from pythonosc.udp_client import SimpleUDPClient
 
-pot1 = MCP3008(0)
-pot2 = MCP3008(1)
+pot2 = MCP3008(0)
+pot4 = MCP3008(1)
 pot3 = MCP3008(2)
-pot4 = MCP3008(3)
+pot1 = MCP3008(3)
 osc_ip = "127.0.0.1"
 osc_port = 28017
 client = SimpleUDPClient(osc_ip, osc_port)
