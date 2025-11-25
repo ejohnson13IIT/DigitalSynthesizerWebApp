@@ -43,24 +43,28 @@ def normalize_semitone(semitone_value):
 
 while True:
 	if abs(int(pot1.value * 100) - lastVal1) > 2:
-		octave_value = map_pot_to_octave(pot1.value)
+		pot1_inverted = 1.0 - pot1.value
+		octave_value = map_pot_to_octave(pot1_inverted)
 		octave_normalized = normalize_octave(octave_value)
 		client.send_message("/Carla/0/set_parameter_value", [0, octave_normalized])
 		print(f"Pot1 -> Parameter 0 (octave): {octave_value} (normalized: {octave_normalized:.3f})")
 	
 	if abs(int(pot2.value * 100) - lastVal2) > 2:
-		semitone_value = map_pot_to_semitone(pot2.value)
+		pot2_inverted = 1.0 - pot2.value
+		semitone_value = map_pot_to_semitone(pot2_inverted)
 		semitone_normalized = normalize_semitone(semitone_value)
 		client.send_message("/Carla/0/set_parameter_value", [1, semitone_normalized])
 		print(f"Pot2 -> Parameter 1 (semitone): {semitone_value:.2f} (normalized: {semitone_normalized:.3f})")
 	
 	if abs(int(pot3.value * 100) - lastVal3) > 2:
-		mix_value = map_pot_to_mix(pot3.value)
+		pot3_inverted = 1.0 - pot3.value
+		mix_value = map_pot_to_mix(pot3_inverted)
 		client.send_message("/Carla/0/set_parameter_value", [2, mix_value])
 		print(f"Pot3 -> Parameter 2 (mix): {mix_value:.2f}")
 	
 	if abs(int(pot4.value * 100) - lastVal4) > 2:
-		octave_value = map_pot_to_octave(pot4.value)
+		pot4_inverted = 1.0 - pot4.value
+		octave_value = map_pot_to_octave(pot4_inverted)
 		octave_normalized = normalize_octave(octave_value)
 		client.send_message("/Carla/0/set_parameter_value", [3, octave_normalized])
 		print(f"Pot4 -> Parameter 3 (octave): {octave_value} (normalized: {octave_normalized:.3f})")
