@@ -142,36 +142,29 @@ def proxy_move_plugin():
 def handle_knob_change(data):
     try:
         parameterID = data["knob"]
+        # Frontend now sends normalized value (0-1) in 'value' field
         normalized_value = float(data["value"])
-        display_value = data.get("displayValue")
-
-        if display_value is not None:
-            try:
-                value_to_send = float(display_value)
-            except (TypeError, ValueError):
-                logger.warning(
-                    "Invalid displayValue %s for parameter %s; falling back to normalized value",
-                    display_value,
-                    parameterID,
-                )
-                value_to_send = normalized_value
-        else:
-            value_to_send = normalized_value
+        display_value = data.get("displayValue")  # Actual value for logging only
+        
+        # OSC requires normalized values between 0 and 1
+        # Clamp to ensure it's in valid range
+        value_to_send = max(0.0, min(1.0, normalized_value))
+        
         rackID = data["rack"]
         sentMsg = f"/{carla_client_name}/{rackID}/set_parameter_value"
         client.send_message(sentMsg, [parameterID, value_to_send])
 
         if display_value is not None:
             logger.info(
-                "OSC sent: %s [%s, %.4f] (actual: %.4f)",
+                "OSC sent: %s [%s, %.4f] (normalized, actual: %.4f)",
                 sentMsg,
                 parameterID,
-                normalized_value,
                 value_to_send,
+                display_value,
             )
         else:
             logger.info(
-                "OSC sent: %s [%s, %.4f]",
+                "OSC sent: %s [%s, %.4f] (normalized)",
                 sentMsg,
                 parameterID,
                 value_to_send,

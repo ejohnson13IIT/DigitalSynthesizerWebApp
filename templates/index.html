@@ -309,7 +309,14 @@
         headerContainer.appendChild(controls);
         rack.appendChild(headerContainer);
 
-        plugin.parameters.forEach((param) => {
+        // For NewProject (starting plugin), only show first 14 parameters
+        // Otherwise show all parameters
+        const isNewProject = plugin.id === 0 || plugin.name === "NewProject";
+        const parametersToShow = isNewProject 
+          ? plugin.parameters.slice(0, 14)
+          : plugin.parameters;
+        
+        parametersToShow.forEach((param) => {
           const knob = createKnob(plugin.id, param);
           rack.appendChild(knob);
         });
@@ -436,11 +443,12 @@
 
             if (!previous || Math.abs(previous.normalized - clamped) > 0.001) {
               knobState.set(stateKey, { normalized: clamped, raw: rawValue });
+              // Send normalized value (0-1) for OSC, but display actual value
               socket.emit('knob_change', {
                 rack: pluginId,
                 knob: param.id,
-                value: rawValue,
-                displayValue: rawValue,
+                value: clamped,  // Normalized value (0-1) for OSC
+                displayValue: rawValue,  // Actual value for display
               });
               console.log(`📤 Rack ${pluginId} Param ${param.id} -> ${rawValue} (norm ${clamped.toFixed(3)})`);
             }
