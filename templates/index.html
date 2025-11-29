@@ -617,8 +617,15 @@
             
             valueDisplay.textContent = `Value: ${displayValue}`;
           } else {
-            // For continuous values, send normalized value (0-1) to OSC
-            rawValue = clamped;  // Already normalized 0-1, send directly to OSC
+            // For continuous values
+            if (knobConfig) {
+              // NewProject: send normalized value (0-1) to OSC
+              rawValue = clamped;  // Already normalized 0-1, send directly to OSC
+            } else {
+              // Other plugins: send actual (unnormalized) value to OSC
+              // Denormalize using actual parameter ranges from server
+              rawValue = denormalizeValue(clamped, param.min, param.max);
+            }
             // Display value can be denormalized for showing to user
             displayValue = denormalizeValue(clamped, effectiveMin, effectiveMax);
             valueDisplay.textContent = `Value: ${formatValue(displayValue)}`;

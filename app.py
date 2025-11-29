@@ -157,32 +157,43 @@ def proxy_remove_plugin():
 def handle_knob_change(data):
     try:
         parameterID = data["knob"]
-        # Frontend now sends normalized value (0-1) in 'value' field
-        normalized_value = float(data["value"])
-        display_value = data.get("displayValue")  # Actual value for logging only
-        
-        # OSC requires normalized values between 0 and 1
-        # Clamp to ensure it's in valid range
-        value_to_send = max(0.0, min(1.0, normalized_value))
-        
         rackID = data["rack"]
+        # Frontend sends different value types:
+        # - NewProject: normalized (0-1)
+        # - Other plugins: actual (unnormalized) values
+        value_from_frontend = float(data["value"])
+        display_value = data.get("displayValue")  # Display value for logging
+        
+        # Check if this is NewProject (rackID 0) - it needs normalized values
+        # Other plugins get actual values
+        if rackID == 0:
+            # NewProject: clamp normalized value to 0-1
+            value_to_send = max(0.0, min(1.0, value_from_frontend))
+            value_type = "normalized"
+        else:
+            # Other plugins: send actual value as-is
+            value_to_send = value_from_frontend
+            value_type = "actual"
+        
         sentMsg = f"/{carla_client_name}/{rackID}/set_parameter_value"
         client.send_message(sentMsg, [parameterID, value_to_send])
 
         if display_value is not None:
             logger.info(
-                "OSC sent: %s [%s, %.4f] (normalized, actual: %.4f)",
+                "OSC sent: %s [%s, %.4f] (%s, display: %.4f)",
                 sentMsg,
                 parameterID,
                 value_to_send,
+                value_type,
                 display_value,
             )
         else:
             logger.info(
-                "OSC sent: %s [%s, %.4f] (normalized)",
+                "OSC sent: %s [%s, %.4f] (%s)",
                 sentMsg,
                 parameterID,
                 value_to_send,
+                value_type,
             )
     except Exception as e:
         logger.error(f"Error in handle_knob_change: {e}")
