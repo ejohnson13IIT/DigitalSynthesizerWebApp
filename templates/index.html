@@ -550,8 +550,9 @@
         wrapper.appendChild(rangeDisplay);
         
         let isDragging = false;
-        // param.value from server is the actual value, normalize it using effective min/max
-        let currentNormalized = normalizeValue(param.value, effectiveMin, effectiveMax);
+        // Always normalize using actual parameter ranges from server (param.min, param.max)
+        // This ensures correct normalization regardless of display ranges
+        let currentNormalized = normalizeValue(param.value, param.min, param.max);
         const stateKey = `${pluginId}-${param.id}`;
         
         // Initialize state with proper display value
