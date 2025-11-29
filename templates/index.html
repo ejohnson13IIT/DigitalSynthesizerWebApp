@@ -616,9 +616,11 @@
             
             valueDisplay.textContent = `Value: ${displayValue}`;
           } else {
-            rawValue = denormalizeValue(clamped, effectiveMin, effectiveMax);
-            displayValue = rawValue;
-            valueDisplay.textContent = `Value: ${formatValue(rawValue)}`;
+            // For continuous values, send normalized value (0-1) to OSC
+            rawValue = clamped;  // Already normalized 0-1, send directly to OSC
+            // Display value can be denormalized for showing to user
+            displayValue = denormalizeValue(clamped, effectiveMin, effectiveMax);
+            valueDisplay.textContent = `Value: ${formatValue(displayValue)}`;
           }
 
           if (emit) {
