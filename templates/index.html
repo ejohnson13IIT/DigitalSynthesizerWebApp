@@ -297,40 +297,44 @@
         header.textContent = `${plugin.name || 'Plugin'} (ID ${plugin.id})`;
         headerContainer.appendChild(header);
 
-        // Create arrow controls
-        const controls = document.createElement('div');
-        controls.className = 'rack-controls';
+        // Check if this is NewProject (starting plugin)
+        const isNewProject = plugin.id === 0 || plugin.name === "NewProject";
+        
+        // Create arrow controls (only if not NewProject)
+        if (!isNewProject) {
+          const controls = document.createElement('div');
+          controls.className = 'rack-controls';
 
-        const upArrow = document.createElement('button');
-        upArrow.className = 'arrow-button';
-        upArrow.textContent = '↑';
-        upArrow.title = 'Move up in chain';
-        upArrow.disabled = chainPosition === 0;
-        upArrow.addEventListener('click', () => movePluginInChain(plugin.id, 'up'));
+          const upArrow = document.createElement('button');
+          upArrow.className = 'arrow-button';
+          upArrow.textContent = '↑';
+          upArrow.title = 'Move up in chain';
+          upArrow.disabled = chainPosition === 0;
+          upArrow.addEventListener('click', () => movePluginInChain(plugin.id, 'up'));
 
-        const downArrow = document.createElement('button');
-        downArrow.className = 'arrow-button';
-        downArrow.textContent = '↓';
-        downArrow.title = 'Move down in chain';
-        downArrow.disabled = chainPosition === chainLength - 1;
-        downArrow.addEventListener('click', () => movePluginInChain(plugin.id, 'down'));
+          const downArrow = document.createElement('button');
+          downArrow.className = 'arrow-button';
+          downArrow.textContent = '↓';
+          downArrow.title = 'Move down in chain';
+          downArrow.disabled = chainPosition === chainLength - 1;
+          downArrow.addEventListener('click', () => movePluginInChain(plugin.id, 'down'));
 
-        const removeButton = document.createElement('button');
-        removeButton.className = 'arrow-button remove-button';
-        removeButton.textContent = '×';
-        removeButton.title = 'Remove plugin';
-        removeButton.style.color = '#ff6b6b';
-        removeButton.addEventListener('click', () => removePlugin(plugin.id, plugin.name));
+          const removeButton = document.createElement('button');
+          removeButton.className = 'arrow-button remove-button';
+          removeButton.textContent = '×';
+          removeButton.title = 'Remove plugin';
+          removeButton.style.color = '#ff6b6b';
+          removeButton.addEventListener('click', () => removePlugin(plugin.id, plugin.name));
 
-        controls.appendChild(upArrow);
-        controls.appendChild(downArrow);
-        controls.appendChild(removeButton);
-        headerContainer.appendChild(controls);
+          controls.appendChild(upArrow);
+          controls.appendChild(downArrow);
+          controls.appendChild(removeButton);
+          headerContainer.appendChild(controls);
+        }
         rack.appendChild(headerContainer);
 
         // For NewProject (starting plugin), only show first 14 parameters
         // Otherwise show all parameters
-        const isNewProject = plugin.id === 0 || plugin.name === "NewProject";
         const parametersToShow = isNewProject 
           ? plugin.parameters.slice(0, 14)
           : plugin.parameters;
@@ -501,11 +505,7 @@
         }
         
         const label = document.createElement('label');
-        let paramName = param.name || `Parameter ${param.id}`;
-        if (knobConfig) {
-          // Add type indicator to label
-          paramName += ` (${knobConfig.type})`;
-        }
+        const paramName = param.name || `Parameter ${param.id}`;
         label.textContent = paramName;
         
         const knob = document.createElement('div');
