@@ -478,6 +478,54 @@ def reroute_plugin_chain(insert_position: int, new_plugin_id: int):
         print(f"Connecting plugin {new_plugin_id} -> {next_plugin_id}")
         connect_plugin_chain(new_plugin_id, next_plugin_id)
 
+def find_akm320_midi_port() -> str:
+    """Find the AKM320 MIDI port dynamically (handles changing ALSA card numbers)"""
+    try:
+        result = subprocess.run(
+            ["jack_lsp"],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        if result.returncode == 0:
+            lines = result.stdout.split('\n')
+            for line in lines:
+                line = line.strip()
+                # Match pattern like "a2j:AKM320 [24] (capture): AKM320 MIDI 1"
+                if "a2j:AKM320" in line and "(capture)" in line and "AKM320 MIDI 1" in line:
+                    return line
+        print("Warning: AKM320 MIDI port not found")
+        return ""
+    except Exception as e:
+        print(f"Error finding AKM320 MIDI port: {e}")
+        return ""
+
+def connect_midi_to_plugin(plugin_name: str):
+    """Connect AKM320 MIDI to a plugin's events-in port"""
+    midi_port = find_akm320_midi_port()
+    if not midi_port:
+        print(f"Warning: Could not find AKM320 MIDI port, skipping MIDI connection to {plugin_name}")
+        return False
+    
+    plugin_midi_port = f"{plugin_name}:events-in"
+    print(f"Connecting MIDI: {midi_port} -> {plugin_midi_port}")
+    return jack_connect(midi_port, plugin_midi_port)
+
+def ensure_plugin_chain_connections():
+    """Ensure all plugins in the chain are properly connected (audio connections)"""
+    global PLUGIN_CHAIN
+    
+    if len(PLUGIN_CHAIN) < 2:
+        # Need at least 2 plugins to have chain connections
+        return
+    
+    # Connect each plugin to the next one in the chain
+    for i in range(len(PLUGIN_CHAIN) - 1):
+        prev_id = PLUGIN_CHAIN[i]
+        next_id = PLUGIN_CHAIN[i + 1]
+        print(f"Ensuring connection: plugin {prev_id} -> plugin {next_id}")
+        connect_plugin_chain(prev_id, next_id)
+
 def sync_plugin_chain():
     """Sync PLUGIN_CHAIN with actual loaded plugins and ensure final plugin is connected to system"""
     global PLUGIN_CHAIN
@@ -494,6 +542,9 @@ def sync_plugin_chain():
             # Chain contains invalid IDs, reset it
             PLUGIN_CHAIN = list(range(count))
         # If chain is valid, preserve the order
+    
+    # Ensure all plugins in chain are connected to each other
+    ensure_plugin_chain_connections()
     
     # Ensure final plugin is connected to system playback
     if len(PLUGIN_CHAIN) > 0:
@@ -537,6 +588,26 @@ load_plugin_database()
 
 # Initialize plugin chain on startup
 sync_plugin_chain()
+
+# Auto-connect MIDI to NewProject on startup
+def auto_connect_midi_on_startup():
+    """Auto-connect MIDI to NewProject plugin if it exists"""
+    time.sleep(1.0)  # Wait for plugins to fully initialize
+    count = host.get_current_plugin_count()
+    for i in range(count):
+        try:
+            plugin_info = host.get_plugin_info(i)
+            plugin_name = plugin_info.get("name", "")
+            if plugin_name == "NewProject":
+                print(f"Found NewProject at plugin ID {i}, connecting MIDI...")
+                connect_midi_to_plugin(plugin_name)
+                return
+        except Exception as e:
+            print(f"Error checking plugin {i} for MIDI connection: {e}")
+    print("NewProject not found, skipping MIDI auto-connection")
+
+# Run MIDI auto-connection in a separate thread after a delay
+threading.Thread(target=auto_connect_midi_on_startup, daemon=True).start()
 
 # === Keep the engine alive ===
 def idle_loop():
@@ -918,6 +989,13 @@ def add_plugin():
         time.sleep(0.2)
         connect_final_plugin_to_system(new_plugin_index)
         
+        # Auto-connect MIDI if this is NewProject
+        plugin_name = plugin_info.get("name", "")
+        if plugin_name == "NewProject":
+            print(f"New plugin is NewProject, connecting MIDI...")
+            time.sleep(0.3)  # Wait for plugin to fully initialize
+            connect_midi_to_plugin(plugin_name)
+        
         return jsonify({
             "status": "ok", 
             "plugin": plugin_info, 
@@ -1084,7 +1162,19 @@ def move_plugin():
             print(f"Ensuring final plugin {final_plugin_id} is connected to system playback")
             time.sleep(0.1)
             connect_final_plugin_to_system(final_plugin_id)
-            jack_connect("a2j:AKM320 [24] (capture): AKM320 MIDI 1", "ADLplug:events-in")
+        
+        # Ensure MIDI is connected to NewProject if it exists in the chain
+        for plugin_id in PLUGIN_CHAIN:
+            try:
+                plugin_info = host.get_plugin_info(plugin_id)
+                plugin_name = plugin_info.get("name", "")
+                if plugin_name == "NewProject":
+                    print(f"Found NewProject at plugin ID {plugin_id}, ensuring MIDI connection...")
+                    time.sleep(0.2)
+                    connect_midi_to_plugin(plugin_name)
+                    break
+            except Exception as e:
+                print(f"Error checking plugin {plugin_id} for MIDI connection: {e}")
 
         
         return jsonify({
