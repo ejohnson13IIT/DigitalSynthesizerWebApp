@@ -66,25 +66,25 @@ while True:
 		pot1_inverted = 1.0 - pot1.value
 		octave_value = map_pot_to_octave(pot1_inverted)
 		octave_normalized = normalize_octave(octave_value)
-		client.send_message("/Carla/0/set_parameter_value", [param_base, octave_normalized])
+		client.send_message("/WebAppHost/0/set_parameter_value", [param_base, octave_normalized])
 		print(f"Pot1 -> Parameter {param_base} (octave): {octave_value} (normalized: {octave_normalized:.3f}) [Selector: {current_selector}]")
 	
 	if abs(int(pot2.value * 100) - lastVal2) > 2:
 		pot2_inverted = 1.0 - pot2.value
 		semitone_value = map_pot_to_semitone(pot2_inverted)
 		semitone_normalized = normalize_semitone(semitone_value)
-		client.send_message("/Carla/0/set_parameter_value", [param_semitone, semitone_normalized])
+		client.send_message("/WebAppHost/0/set_parameter_value", [param_semitone, semitone_normalized])
 		print(f"Pot2 -> Parameter {param_semitone} (semitone): {semitone_value:.2f} (normalized: {semitone_normalized:.3f}) [Selector: {current_selector}]")
 	
 	if abs(int(pot3.value * 100) - lastVal3) > 2:
 		pot3_inverted = 1.0 - pot3.value
 		mix_value = map_pot_to_mix(pot3_inverted)
-		client.send_message("/Carla/0/set_parameter_value", [param_mix, mix_value])
+		client.send_message("/WebAppHost/0/set_parameter_value", [param_mix, mix_value])
 		print(f"Pot3 -> Parameter {param_mix} (mix): {mix_value:.2f} [Selector: {current_selector}]")
 	
 	if abs(int(pot4.value * 100) - lastVal4) > 2:
 		selector_normalized = normalize_selector(current_selector)
-		client.send_message("/Carla/0/set_parameter_value", [12, selector_normalized])
+		client.send_message("/WebAppHost/0/set_parameter_value", [12, selector_normalized])
 		print(f"Pot4 -> Selector: {current_selector} (normalized: {selector_normalized:.3f}) -> Parameters {param_base}, {param_semitone}, {param_mix}, Parameter 12: {selector_normalized:.3f}")
 	
 	lastVal1 = int(pot1.value * 100)
