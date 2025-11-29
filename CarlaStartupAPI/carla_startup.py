@@ -640,6 +640,7 @@ def index():
             "POST /plugins/add": "Add a plugin from the database (body: {plugin_id})",
             "GET /plugins/chain": "Get the current plugin chain order",
             "POST /plugins/move": "Move a plugin up/down in chain (body: {plugin_id, direction: 'up'|'down'})",
+            "POST /plugins/remove": "Remove a plugin (body: {plugin_id})",
             "POST /reload_project": "Reload the Carla project (optional body: {path})",
             "POST /shutdown": "Shutdown the Carla engine"
         }
@@ -1183,6 +1184,55 @@ def move_plugin():
             "old_position": current_position,
             "new_position": new_position
         })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+@app.route("/plugins/remove", methods=["POST"])
+def remove_plugin():
+    """Remove a plugin from the current project"""
+    try:
+        data = request.get_json(force=True)
+        plugin_id = int(data.get("plugin_id"))
+        
+        plugin_count = host.get_current_plugin_count()
+        if plugin_id < 0 or plugin_id >= plugin_count:
+            return jsonify({"error": f"Invalid plugin_id: {plugin_id}. Valid range: 0-{plugin_count-1}"}), 400
+        
+        # Get plugin info before removal for response
+        plugin_info = host.get_plugin_info(plugin_id)
+        plugin_name = plugin_info.get("name", f"plugin_{plugin_id}")
+        
+        # Disconnect plugin from JACK before removal
+        print(f"Disconnecting plugin {plugin_id} ({plugin_name}) from JACK...")
+        disconnect_plugin_completely(plugin_id)
+        time.sleep(0.2)
+        
+        # Remove plugin from Carla
+        success = host.remove_plugin(plugin_id)
+        if not success:
+            error_msg = host.get_last_error() or "Unknown error while removing plugin"
+            return jsonify({"error": error_msg}), 500
+        
+        # Remove from plugin chain
+        global PLUGIN_CHAIN
+        if plugin_id in PLUGIN_CHAIN:
+            PLUGIN_CHAIN.remove(plugin_id)
+        
+        # After removal, Carla renumbers plugins: all plugins with id > plugin_id get decremented by 1
+        # Re-index the plugin chain to reflect this
+        PLUGIN_CHAIN = [pid - 1 if pid > plugin_id else pid for pid in PLUGIN_CHAIN]
+        
+        # Reconnect the chain after removal
+        time.sleep(0.3)
+        sync_plugin_chain()
+        
+        return jsonify({
+            "status": "ok",
+            "removed_plugin_id": plugin_id,
+            "removed_plugin_name": plugin_name
+        })
+    except (KeyError, ValueError, TypeError) as e:
+        return jsonify({"error": f"Invalid request data: {str(e)}"}), 400
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 

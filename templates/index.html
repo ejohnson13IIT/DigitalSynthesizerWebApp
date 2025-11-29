@@ -79,6 +79,17 @@
         opacity: 0.5;
       }
 
+      .remove-button {
+        background: #ff4444 !important;
+        color: #fff !important;
+        font-size: 20px;
+        font-weight: bold;
+      }
+
+      .remove-button:hover {
+        background: #ff6666 !important;
+      }
+
       .knob-wrapper {
         display: flex;
         flex-direction: column;
@@ -304,8 +315,16 @@
         downArrow.disabled = chainPosition === chainLength - 1;
         downArrow.addEventListener('click', () => movePluginInChain(plugin.id, 'down'));
 
+        const removeButton = document.createElement('button');
+        removeButton.className = 'arrow-button remove-button';
+        removeButton.textContent = '×';
+        removeButton.title = 'Remove plugin';
+        removeButton.style.color = '#ff6b6b';
+        removeButton.addEventListener('click', () => removePlugin(plugin.id, plugin.name));
+
         controls.appendChild(upArrow);
         controls.appendChild(downArrow);
+        controls.appendChild(removeButton);
         headerContainer.appendChild(controls);
         rack.appendChild(headerContainer);
 
@@ -382,12 +401,47 @@
           await loadPlugins();
         }
       }
+
+      async function removePlugin(pluginId, pluginName) {
+        // Confirm removal
+        if (!confirm(`Are you sure you want to remove "${pluginName}" (ID ${pluginId})?`)) {
+          return;
+        }
+
+        try {
+          setPluginStatus('Removing plugin...', 'info');
+          const response = await fetch('/api/plugins/remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ plugin_id: pluginId }),
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || `Server responded with ${response.status}`);
+          }
+
+          const data = await response.json();
+          setPluginStatus(`Removed "${data.removed_plugin_name}"`, 'success');
+          
+          // Reload plugins to update UI
+          await loadPlugins();
+          
+          // Clear status after 3 seconds
+          setTimeout(() => setPluginStatus('', 'info'), 3000);
+        } catch (error) {
+          console.error('Failed to remove plugin:', error);
+          setPluginStatus(`Failed to remove plugin: ${error.message}`, 'error');
+        }
+      }
       
       function updateArrowStates(container) {
         const racks = Array.from(container.querySelectorAll('.rack'));
         racks.forEach((rack, index) => {
-          const upArrow = rack.querySelector('.arrow-button:first-of-type');
-          const downArrow = rack.querySelector('.arrow-button:last-of-type');
+          // Get arrow buttons (excluding remove button)
+          const buttons = rack.querySelectorAll('.arrow-button:not(.remove-button)');
+          const upArrow = buttons[0];
+          const downArrow = buttons[1];
           
           if (upArrow) {
             upArrow.disabled = index === 0;
@@ -402,8 +456,56 @@
         const wrapper = document.createElement('div');
         wrapper.className = 'knob-wrapper';
         
+        // Check if this is NewProject and get hardcoded mapping
+        const isNewProject = pluginId === 0;
+        let knobConfig = null;
+        if (isNewProject) {
+          // Hardcoded knob mappings for NewProject
+          const paramId = param.id;
+          if ([0, 3, 6, 9].includes(paramId)) {
+            // Octave knobs: -2, -1, 0, 1, 2 (discrete)
+            knobConfig = {
+              type: 'octave',
+              min: -2,
+              max: 2,
+              discrete: true,
+              values: [-2, -1, 0, 1, 2]
+            };
+          } else if ([1, 4, 7, 10].includes(paramId)) {
+            // Semitone knobs: -12 to 12 (continuous)
+            knobConfig = {
+              type: 'semitone',
+              min: -12,
+              max: 12,
+              discrete: false
+            };
+          } else if ([2, 5, 8, 11].includes(paramId)) {
+            // Mix knobs: 0 to 1 (continuous)
+            knobConfig = {
+              type: 'mix',
+              min: 0,
+              max: 1,
+              discrete: false
+            };
+          } else if (paramId === 12) {
+            // Selector knob: 1, 2, 3, 4 (discrete)
+            knobConfig = {
+              type: 'selector',
+              min: 1,
+              max: 4,
+              discrete: true,
+              values: [1, 2, 3, 4]
+            };
+          }
+          // paramId 13 stays as is (no special config)
+        }
+        
         const label = document.createElement('label');
-        const paramName = param.name || `Parameter ${param.id}`;
+        let paramName = param.name || `Parameter ${param.id}`;
+        if (knobConfig) {
+          // Add type indicator to label
+          paramName += ` (${knobConfig.type})`;
+        }
         label.textContent = paramName;
         
         const knob = document.createElement('div');
@@ -412,11 +514,35 @@
         
         const valueDisplay = document.createElement('div');
         valueDisplay.className = 'value-display';
-        valueDisplay.textContent = `Value: ${formatValue(param.value)}`;
-
+        
         const rangeDisplay = document.createElement('div');
         rangeDisplay.className = 'range-display';
-        rangeDisplay.textContent = `Range: ${formatValue(param.min)} – ${formatValue(param.max)}`;
+        
+        // Use hardcoded config if available, otherwise use param values
+        const effectiveMin = knobConfig ? knobConfig.min : param.min;
+        const effectiveMax = knobConfig ? knobConfig.max : param.max;
+        
+        // Initialize display
+        if (knobConfig && knobConfig.discrete) {
+          // For discrete values, param.value from server is the actual value
+          // Find the closest discrete value
+          const currentValue = param.value;
+          let closestValue = knobConfig.values[0];
+          let minDiff = Math.abs(currentValue - closestValue);
+          for (const val of knobConfig.values) {
+            const diff = Math.abs(currentValue - val);
+            if (diff < minDiff) {
+              minDiff = diff;
+              closestValue = val;
+            }
+          }
+          valueDisplay.textContent = `Value: ${closestValue}`;
+          rangeDisplay.textContent = `Range: ${knobConfig.values[0]} – ${knobConfig.values[knobConfig.values.length - 1]}`;
+        } else {
+          // For continuous values, param.value is the actual value
+          valueDisplay.textContent = `Value: ${formatValue(param.value)}`;
+          rangeDisplay.textContent = `Range: ${formatValue(effectiveMin)} – ${formatValue(effectiveMax)}`;
+        }
         
         wrapper.appendChild(label);
         wrapper.appendChild(knob);
@@ -424,9 +550,36 @@
         wrapper.appendChild(rangeDisplay);
         
         let isDragging = false;
-        let currentNormalized = normalizeValue(param.value, param.min, param.max);
+        // param.value from server is the actual value, normalize it using effective min/max
+        let currentNormalized = normalizeValue(param.value, effectiveMin, effectiveMax);
         const stateKey = `${pluginId}-${param.id}`;
-        knobState.set(stateKey, { normalized: currentNormalized, raw: param.value });
+        
+        // Initialize state with proper display value
+        let initialDisplayValue;
+        if (knobConfig && knobConfig.discrete) {
+          // Find closest discrete value to current param.value
+          const currentValue = param.value;
+          let closestValue = knobConfig.values[0];
+          let minDiff = Math.abs(currentValue - closestValue);
+          for (const val of knobConfig.values) {
+            const diff = Math.abs(currentValue - val);
+            if (diff < minDiff) {
+              minDiff = diff;
+              closestValue = val;
+            }
+          }
+          initialDisplayValue = closestValue;
+          // Re-normalize based on the closest discrete value
+          if (knobConfig.type === 'octave') {
+            currentNormalized = (closestValue + 2) / 4.0;
+          } else if (knobConfig.type === 'selector') {
+            currentNormalized = (closestValue - 1) / 3.0;
+          }
+        } else {
+          initialDisplayValue = param.value;
+        }
+        
+        knobState.set(stateKey, { normalized: currentNormalized, raw: initialDisplayValue });
         let dragStartY = 0;
         let dragStartNormalized = currentNormalized;
 
@@ -435,22 +588,52 @@
           currentNormalized = clamped;
           const angle = angleFromNormalized(clamped);
           knob.style.transform = `rotate(${angle}deg)`;
-          const rawValue = denormalizeValue(clamped, param.min, param.max);
-          valueDisplay.textContent = `Value: ${formatValue(rawValue)}`;
+          
+          // Use hardcoded config if available, otherwise use param values
+          const effectiveMin = knobConfig ? knobConfig.min : param.min;
+          const effectiveMax = knobConfig ? knobConfig.max : param.max;
+          
+          let rawValue, displayValue;
+          
+          if (knobConfig && knobConfig.discrete) {
+            // For discrete values, snap to nearest discrete value
+            const discreteIndex = Math.round(clamped * (knobConfig.values.length - 1));
+            const clampedIndex = Math.max(0, Math.min(knobConfig.values.length - 1, discreteIndex));
+            displayValue = knobConfig.values[clampedIndex];
+            
+            // For OSC, we need to normalize the discrete value back to 0-1
+            // This matches the normalization functions in pot_test.py
+            if (knobConfig.type === 'octave') {
+              // normalize_octave: (octave_value + 2) / 4.0
+              rawValue = (displayValue + 2) / 4.0;
+            } else if (knobConfig.type === 'selector') {
+              // normalize_selector: selector_value / 3.0 (but we use 1-4, so adjust)
+              // Map 1,2,3,4 to 0,1,2,3 then normalize
+              rawValue = (displayValue - 1) / 3.0;
+            } else {
+              rawValue = clamped; // Fallback
+            }
+            
+            valueDisplay.textContent = `Value: ${displayValue}`;
+          } else {
+            rawValue = denormalizeValue(clamped, effectiveMin, effectiveMax);
+            displayValue = rawValue;
+            valueDisplay.textContent = `Value: ${formatValue(rawValue)}`;
+          }
 
           if (emit) {
             const previous = knobState.get(stateKey);
 
             if (!previous || Math.abs(previous.normalized - clamped) > 0.001) {
-              knobState.set(stateKey, { normalized: clamped, raw: rawValue });
+              knobState.set(stateKey, { normalized: clamped, raw: displayValue });
               // Send normalized value (0-1) for OSC, but display actual value
               socket.emit('knob_change', {
                 rack: pluginId,
                 knob: param.id,
-                value: clamped,  // Normalized value (0-1) for OSC
-                displayValue: rawValue,  // Actual value for display
+                value: rawValue,  // Normalized value (0-1) for OSC
+                displayValue: displayValue,  // Actual value for display
               });
-              console.log(`📤 Rack ${pluginId} Param ${param.id} -> ${rawValue} (norm ${clamped.toFixed(3)})`);
+              console.log(`📤 Rack ${pluginId} Param ${param.id} -> ${displayValue} (norm ${rawValue.toFixed(3)})`);
             }
           }
         }
