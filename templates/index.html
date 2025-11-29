@@ -550,34 +550,32 @@
         wrapper.appendChild(rangeDisplay);
         
         let isDragging = false;
-        // Always normalize using actual parameter ranges from server (param.min, param.max)
-        // This ensures correct normalization regardless of display ranges
-        let currentNormalized = normalizeValue(param.value, param.min, param.max);
+        // param.value from server is already normalized (0-1) from Carla
+        // Use it directly, but clamp to ensure it's in valid range
+        let currentNormalized = Math.max(0.0, Math.min(1.0, param.value));
         const stateKey = `${pluginId}-${param.id}`;
         
         // Initialize state with proper display value
         let initialDisplayValue;
         if (knobConfig && knobConfig.discrete) {
-          // Find closest discrete value to current param.value
-          const currentValue = param.value;
-          let closestValue = knobConfig.values[0];
-          let minDiff = Math.abs(currentValue - closestValue);
-          for (const val of knobConfig.values) {
-            const diff = Math.abs(currentValue - val);
-            if (diff < minDiff) {
-              minDiff = diff;
-              closestValue = val;
-            }
-          }
+          // For discrete values, find closest discrete value based on normalized value
+          const discreteIndex = Math.round(currentNormalized * (knobConfig.values.length - 1));
+          const clampedIndex = Math.max(0, Math.min(knobConfig.values.length - 1, discreteIndex));
+          const closestValue = knobConfig.values[clampedIndex];
           initialDisplayValue = closestValue;
-          // Re-normalize based on the closest discrete value
+          // Re-normalize based on the closest discrete value using special functions (matching pot_test.py)
           if (knobConfig.type === 'octave') {
             currentNormalized = (closestValue + 2) / 4.0;
           } else if (knobConfig.type === 'selector') {
             currentNormalized = (closestValue - 1) / 3.0;
           }
         } else {
-          initialDisplayValue = param.value;
+          // For continuous values, denormalize for display
+          if (knobConfig) {
+            initialDisplayValue = denormalizeValue(currentNormalized, knobConfig.min, knobConfig.max);
+          } else {
+            initialDisplayValue = denormalizeValue(currentNormalized, param.min, param.max);
+          }
         }
         
         knobState.set(stateKey, { normalized: currentNormalized, raw: initialDisplayValue });
@@ -617,15 +615,8 @@
             
             valueDisplay.textContent = `Value: ${displayValue}`;
           } else {
-            // For continuous values
-            if (knobConfig) {
-              // NewProject: send normalized value (0-1) to OSC
-              rawValue = clamped;  // Already normalized 0-1, send directly to OSC
-            } else {
-              // Other plugins: send actual (unnormalized) value to OSC
-              // Denormalize using actual parameter ranges from server
-              rawValue = denormalizeValue(clamped, param.min, param.max);
-            }
+            // For continuous values, send normalized value (0-1) to OSC for all plugins
+            rawValue = clamped;  // Already normalized 0-1, send directly to OSC
             // Display value can be denormalized for showing to user
             displayValue = denormalizeValue(clamped, effectiveMin, effectiveMax);
             valueDisplay.textContent = `Value: ${formatValue(displayValue)}`;
