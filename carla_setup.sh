@@ -131,7 +131,26 @@ jack_connect "$AKM320_PORT" "ADLplug:events-in"
 
 cd ..
 cd potdemo/
-python pot_test.py
+python pot_test.py &
+
+# Wait a moment for everything to fully initialize
+sleep 3
+
+# Get the window ID from wmctrl -l and make it fullscreen
+echo "Finding window and setting to fullscreen..."
+echo "Available windows:"
+wmctrl -l
+
+# Get the first window ID (skip the header line if present)
+WINDOW_ID=$(wmctrl -l | grep -v "^ *$" | head -n1 | awk '{print $1}')
+
+if [ -n "$WINDOW_ID" ]; then
+    echo "Using window ID: $WINDOW_ID"
+    wmctrl -i -r "$WINDOW_ID" -b add,fullscreen,skip_pager,above
+    echo "Window set to fullscreen"
+else
+    echo "Warning: Could not find any window"
+fi
 
 echo "READY TO START"
 
