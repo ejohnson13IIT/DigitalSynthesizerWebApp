@@ -157,13 +157,12 @@ def proxy_remove_plugin():
 def handle_knob_change(data):
     try:
         parameterID = data["knob"]
-        # Frontend now sends normalized value (0-1) in 'value' field for all plugins
-        normalized_value = float(data["value"])
-        display_value = data.get("displayValue")  # Actual value for logging only
+        # Frontend now sends actual (unnormalized) value in 'value' field
+        actual_value = float(data["value"])
+        display_value = data.get("displayValue")  # Same as actual value for logging
         
-        # OSC requires normalized values between 0 and 1
-        # Clamp to ensure it's in valid range
-        value_to_send = max(0.0, min(1.0, normalized_value))
+        # Send the actual value directly to OSC (no normalization)
+        value_to_send = actual_value
         
         rackID = data["rack"]
         sentMsg = f"/{carla_client_name}/{rackID}/set_parameter_value"
@@ -171,7 +170,7 @@ def handle_knob_change(data):
 
         if display_value is not None:
             logger.info(
-                "OSC sent: %s [%s, %.4f] (normalized, actual: %.4f)",
+                "OSC sent: %s [%s, %.4f] (actual value, display: %.4f)",
                 sentMsg,
                 parameterID,
                 value_to_send,
@@ -179,7 +178,7 @@ def handle_knob_change(data):
             )
         else:
             logger.info(
-                "OSC sent: %s [%s, %.4f] (normalized)",
+                "OSC sent: %s [%s, %.4f] (actual value)",
                 sentMsg,
                 parameterID,
                 value_to_send,

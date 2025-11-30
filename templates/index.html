@@ -624,28 +624,27 @@
 
           if (emit) {
             const previous = knobState.get(stateKey);
-            // Check if the value we're sending to OSC has changed (not just the normalized internal value)
+            // Check if the actual value has changed
             const shouldSend = !previous || 
-                               Math.abs(previous.normalized - valueToSendToOSC) > 0.0001 ||
-                               previous.raw !== valueToShowUser;
+                               Math.abs(previous.raw - valueToShowUser) > 0.0001;
             
             if (shouldSend) {
-              knobState.set(stateKey, { normalized: valueToSendToOSC, raw: valueToShowUser });
+              knobState.set(stateKey, { normalized: normalizedValueForOSC, raw: valueToShowUser });
               
-              // Send to server: normalized value goes to OSC, actual value is just for logging
-              console.log(`📤 Attempting to send: Rack ${pluginId} Param ${param.id} -> ${valueToShowUser} (OSC: ${valueToSendToOSC.toFixed(3)})`);
+              // Send to server: actual (unnormalized) value goes to OSC
+              console.log(`📤 Attempting to send: Rack ${pluginId} Param ${param.id} -> ${valueToShowUser} (actual value)`);
               console.log(`📤 Socket connected: ${socket.connected}`);
               
               socket.emit('knob_change', {
                 rack: pluginId,
                 knob: param.id,
-                value: valueToSendToOSC,      // Normalized (0-1) - goes to OSC
-                displayValue: valueToShowUser // Actual value - for logging only
+                value: valueToShowUser,       // Actual (unnormalized) value - goes to OSC
+                displayValue: valueToShowUser // Same value for logging
               });
               
-              console.log(`📤 Sent: Rack ${pluginId} Param ${param.id} -> ${valueToShowUser} (OSC: ${valueToSendToOSC.toFixed(3)})`);
+              console.log(`📤 Sent: Rack ${pluginId} Param ${param.id} -> ${valueToShowUser} (actual value)`);
             } else {
-              console.log(`⏭️ Skipped: Rack ${pluginId} Param ${param.id} - value unchanged (OSC: ${valueToSendToOSC.toFixed(3)})`);
+              console.log(`⏭️ Skipped: Rack ${pluginId} Param ${param.id} - value unchanged (${valueToShowUser})`);
             }
           }
         }
