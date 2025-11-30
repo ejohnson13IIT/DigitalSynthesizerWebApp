@@ -624,9 +624,13 @@
 
           if (emit) {
             const previous = knobState.get(stateKey);
-            // Always send if value changed (removed the threshold check to ensure messages are sent)
-            if (!previous || Math.abs(previous.normalized - normalizedValueForOSC) > 0.0001) {
-              knobState.set(stateKey, { normalized: normalizedValueForOSC, raw: valueToShowUser });
+            // Check if the value we're sending to OSC has changed (not just the normalized internal value)
+            const shouldSend = !previous || 
+                               Math.abs(previous.normalized - valueToSendToOSC) > 0.0001 ||
+                               previous.raw !== valueToShowUser;
+            
+            if (shouldSend) {
+              knobState.set(stateKey, { normalized: valueToSendToOSC, raw: valueToShowUser });
               
               // Send to server: normalized value goes to OSC, actual value is just for logging
               console.log(`📤 Attempting to send: Rack ${pluginId} Param ${param.id} -> ${valueToShowUser} (OSC: ${valueToSendToOSC.toFixed(3)})`);
@@ -640,6 +644,8 @@
               });
               
               console.log(`📤 Sent: Rack ${pluginId} Param ${param.id} -> ${valueToShowUser} (OSC: ${valueToSendToOSC.toFixed(3)})`);
+            } else {
+              console.log(`⏭️ Skipped: Rack ${pluginId} Param ${param.id} - value unchanged (OSC: ${valueToSendToOSC.toFixed(3)})`);
             }
           }
         }
