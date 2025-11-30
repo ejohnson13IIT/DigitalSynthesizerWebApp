@@ -637,7 +637,7 @@
           e.preventDefault();
           isDragging = true;
           dragStartY = e.clientY;
-          dragStartNormalized = currentNormalized;
+          dragStartNormalized = normalizedValueForOSC;
           document.addEventListener('mousemove', rotateKnob);
         }, { passive: false });
 
@@ -645,7 +645,7 @@
           isDragging = true;
           const touch = e.touches[0];
           dragStartY = touch.clientY;
-          dragStartNormalized = currentNormalized;
+          dragStartNormalized = normalizedValueForOSC;
           document.addEventListener('touchmove', handleTouchMove, { passive: false });
         }, { passive: false });
 
@@ -673,7 +673,7 @@
         document.addEventListener('mouseup', endInteraction);
 
         // Initialize position
-        updateKnobUI(currentNormalized, false);
+        updateKnobUI(normalizedValueForOSC, false);
 
         return wrapper;
       }
