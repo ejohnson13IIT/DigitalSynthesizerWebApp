@@ -226,6 +226,20 @@
 
     <script>
       const socket = io();
+      
+      // Debug socket connection
+      socket.on('connect', () => {
+        console.log('✅ WebSocket connected');
+      });
+      
+      socket.on('disconnect', () => {
+        console.log('❌ WebSocket disconnected');
+      });
+      
+      socket.on('connect_error', (error) => {
+        console.error('❌ WebSocket connection error:', error);
+      });
+      
       const KNOB_SWEEP_DEGREES = 270;
       const KNOB_MIN_ANGLE = -135;
       const KNOB_MAX_ANGLE = KNOB_MIN_ANGLE + KNOB_SWEEP_DEGREES;
@@ -610,17 +624,22 @@
 
           if (emit) {
             const previous = knobState.get(stateKey);
-            if (!previous || Math.abs(previous.normalized - normalizedValueForOSC) > 0.001) {
+            // Always send if value changed (removed the threshold check to ensure messages are sent)
+            if (!previous || Math.abs(previous.normalized - normalizedValueForOSC) > 0.0001) {
               knobState.set(stateKey, { normalized: normalizedValueForOSC, raw: valueToShowUser });
               
               // Send to server: normalized value goes to OSC, actual value is just for logging
+              console.log(`📤 Attempting to send: Rack ${pluginId} Param ${param.id} -> ${valueToShowUser} (OSC: ${valueToSendToOSC.toFixed(3)})`);
+              console.log(`📤 Socket connected: ${socket.connected}`);
+              
               socket.emit('knob_change', {
                 rack: pluginId,
                 knob: param.id,
                 value: valueToSendToOSC,      // Normalized (0-1) - goes to OSC
                 displayValue: valueToShowUser // Actual value - for logging only
               });
-              console.log(`📤 Rack ${pluginId} Param ${param.id} -> ${valueToShowUser} (OSC: ${valueToSendToOSC.toFixed(3)})`);
+              
+              console.log(`📤 Sent: Rack ${pluginId} Param ${param.id} -> ${valueToShowUser} (OSC: ${valueToSendToOSC.toFixed(3)})`);
             }
           }
         }
