@@ -518,30 +518,42 @@
         const rangeDisplay = document.createElement('div');
         rangeDisplay.className = 'range-display';
         
-        // Use hardcoded config if available, otherwise use param values
-        const effectiveMin = knobConfig ? knobConfig.min : param.min;
-        const effectiveMax = knobConfig ? knobConfig.max : param.max;
+        // IMPORTANT: param.value from server is already normalized (0-1) from Carla
+        // This is what we'll send to OSC - always between 0 and 1
+        let normalizedValueForOSC = Math.max(0.0, Math.min(1.0, param.value));
+        
+        // Calculate what actual value to display to the user
+        let actualValueForDisplay;
+        if (knobConfig && knobConfig.discrete) {
+          // For discrete knobs (octave, selector), find the closest discrete value
+          const discreteIndex = Math.round(normalizedValueForOSC * (knobConfig.values.length - 1));
+          const clampedIndex = Math.max(0, Math.min(knobConfig.values.length - 1, discreteIndex));
+          actualValueForDisplay = knobConfig.values[clampedIndex];
+          
+          // Re-calculate normalized value using special functions (matching pot_test.py)
+          if (knobConfig.type === 'octave') {
+            normalizedValueForOSC = (actualValueForDisplay + 2) / 4.0;
+          } else if (knobConfig.type === 'selector') {
+            normalizedValueForOSC = (actualValueForDisplay - 1) / 3.0;
+          }
+        } else {
+          // For continuous knobs, convert normalized (0-1) to actual value for display
+          const displayMin = knobConfig ? knobConfig.min : param.min;
+          const displayMax = knobConfig ? knobConfig.max : param.max;
+          actualValueForDisplay = denormalizeValue(normalizedValueForOSC, displayMin, displayMax);
+        }
         
         // Initialize display
         if (knobConfig && knobConfig.discrete) {
-          // For discrete values, param.value from server is the actual value
-          // Find the closest discrete value
-          const currentValue = param.value;
-          let closestValue = knobConfig.values[0];
-          let minDiff = Math.abs(currentValue - closestValue);
-          for (const val of knobConfig.values) {
-            const diff = Math.abs(currentValue - val);
-            if (diff < minDiff) {
-              minDiff = diff;
-              closestValue = val;
-            }
-          }
-          valueDisplay.textContent = `Value: ${closestValue}`;
+          // For discrete knobs, show the discrete value range
+          valueDisplay.textContent = `Value: ${actualValueForDisplay}`;
           rangeDisplay.textContent = `Range: ${knobConfig.values[0]} – ${knobConfig.values[knobConfig.values.length - 1]}`;
         } else {
-          // For continuous values, param.value is the actual value
-          valueDisplay.textContent = `Value: ${formatValue(param.value)}`;
-          rangeDisplay.textContent = `Range: ${formatValue(effectiveMin)} – ${formatValue(effectiveMax)}`;
+          // For continuous knobs, show the actual parameter value
+          valueDisplay.textContent = `Value: ${formatValue(actualValueForDisplay)}`;
+          const displayMin = knobConfig ? knobConfig.min : param.min;
+          const displayMax = knobConfig ? knobConfig.max : param.max;
+          rangeDisplay.textContent = `Range: ${formatValue(displayMin)} – ${formatValue(displayMax)}`;
         }
         
         wrapper.appendChild(label);
@@ -550,91 +562,65 @@
         wrapper.appendChild(rangeDisplay);
         
         let isDragging = false;
-        // param.value from server is already normalized (0-1) from Carla
-        // Use it directly, but clamp to ensure it's in valid range
-        let currentNormalized = Math.max(0.0, Math.min(1.0, param.value));
         const stateKey = `${pluginId}-${param.id}`;
         
-        // Initialize state with proper display value
-        let initialDisplayValue;
-        if (knobConfig && knobConfig.discrete) {
-          // For discrete values, find closest discrete value based on normalized value
-          const discreteIndex = Math.round(currentNormalized * (knobConfig.values.length - 1));
-          const clampedIndex = Math.max(0, Math.min(knobConfig.values.length - 1, discreteIndex));
-          const closestValue = knobConfig.values[clampedIndex];
-          initialDisplayValue = closestValue;
-          // Re-normalize based on the closest discrete value using special functions (matching pot_test.py)
-          if (knobConfig.type === 'octave') {
-            currentNormalized = (closestValue + 2) / 4.0;
-          } else if (knobConfig.type === 'selector') {
-            currentNormalized = (closestValue - 1) / 3.0;
-          }
-        } else {
-          // For continuous values, denormalize for display
-          if (knobConfig) {
-            initialDisplayValue = denormalizeValue(currentNormalized, knobConfig.min, knobConfig.max);
-          } else {
-            initialDisplayValue = denormalizeValue(currentNormalized, param.min, param.max);
-          }
-        }
-        
-        knobState.set(stateKey, { normalized: currentNormalized, raw: initialDisplayValue });
+        knobState.set(stateKey, { normalized: normalizedValueForOSC, raw: actualValueForDisplay });
         let dragStartY = 0;
-        let dragStartNormalized = currentNormalized;
+        let dragStartNormalized = normalizedValueForOSC;
 
-        function updateKnobUI(normalizedValue, emit = true) {
-          const clamped = Math.max(0, Math.min(1, normalizedValue));
-          currentNormalized = clamped;
-          const angle = angleFromNormalized(clamped);
+        function updateKnobUI(newNormalizedValue, emit = true) {
+          // Clamp to valid range (0-1)
+          normalizedValueForOSC = Math.max(0, Math.min(1, newNormalizedValue));
+          
+          // Update knob visual position
+          const angle = angleFromNormalized(normalizedValueForOSC);
           knob.style.transform = `rotate(${angle}deg)`;
           
-          // Use hardcoded config if available, otherwise use param values
-          const effectiveMin = knobConfig ? knobConfig.min : param.min;
-          const effectiveMax = knobConfig ? knobConfig.max : param.max;
-          
-          let rawValue, displayValue;
+          // Calculate what to send to OSC and what to display
+          let valueToSendToOSC;  // Always normalized (0-1)
+          let valueToShowUser;   // Actual parameter value
           
           if (knobConfig && knobConfig.discrete) {
-            // For discrete values, snap to nearest discrete value
-            const discreteIndex = Math.round(clamped * (knobConfig.values.length - 1));
+            // Discrete knobs: snap to nearest discrete value
+            const discreteIndex = Math.round(normalizedValueForOSC * (knobConfig.values.length - 1));
             const clampedIndex = Math.max(0, Math.min(knobConfig.values.length - 1, discreteIndex));
-            displayValue = knobConfig.values[clampedIndex];
+            valueToShowUser = knobConfig.values[clampedIndex];
             
-            // For OSC, we need to normalize the discrete value back to 0-1
-            // This matches the normalization functions in pot_test.py
+            // Convert discrete value back to normalized for OSC (special functions)
             if (knobConfig.type === 'octave') {
-              // normalize_octave: (octave_value + 2) / 4.0
-              rawValue = (displayValue + 2) / 4.0;
+              valueToSendToOSC = (valueToShowUser + 2) / 4.0;
             } else if (knobConfig.type === 'selector') {
-              // normalize_selector: selector_value / 3.0 (but we use 1-4, so adjust)
-              // Map 1,2,3,4 to 0,1,2,3 then normalize
-              rawValue = (displayValue - 1) / 3.0;
+              valueToSendToOSC = (valueToShowUser - 1) / 3.0;
             } else {
-              rawValue = clamped; // Fallback
+              valueToSendToOSC = normalizedValueForOSC;
             }
             
-            valueDisplay.textContent = `Value: ${displayValue}`;
+            valueDisplay.textContent = `Value: ${valueToShowUser}`;
           } else {
-            // For continuous values, send normalized value (0-1) to OSC for all plugins
-            rawValue = clamped;  // Already normalized 0-1, send directly to OSC
-            // Display value can be denormalized for showing to user
-            displayValue = denormalizeValue(clamped, effectiveMin, effectiveMax);
-            valueDisplay.textContent = `Value: ${formatValue(displayValue)}`;
+            // Continuous knobs: send normalized value directly to OSC
+            valueToSendToOSC = normalizedValueForOSC;
+            
+            // Convert to actual value for display
+            const displayMin = knobConfig ? knobConfig.min : param.min;
+            const displayMax = knobConfig ? knobConfig.max : param.max;
+            valueToShowUser = denormalizeValue(normalizedValueForOSC, displayMin, displayMax);
+            
+            valueDisplay.textContent = `Value: ${formatValue(valueToShowUser)}`;
           }
 
           if (emit) {
             const previous = knobState.get(stateKey);
-
-            if (!previous || Math.abs(previous.normalized - clamped) > 0.001) {
-              knobState.set(stateKey, { normalized: clamped, raw: displayValue });
-              // Send normalized value (0-1) for OSC, but display actual value
+            if (!previous || Math.abs(previous.normalized - normalizedValueForOSC) > 0.001) {
+              knobState.set(stateKey, { normalized: normalizedValueForOSC, raw: valueToShowUser });
+              
+              // Send to server: normalized value goes to OSC, actual value is just for logging
               socket.emit('knob_change', {
                 rack: pluginId,
                 knob: param.id,
-                value: rawValue,  // Normalized value (0-1) for OSC
-                displayValue: displayValue,  // Actual value for display
+                value: valueToSendToOSC,      // Normalized (0-1) - goes to OSC
+                displayValue: valueToShowUser // Actual value - for logging only
               });
-              console.log(`📤 Rack ${pluginId} Param ${param.id} -> ${displayValue} (norm ${rawValue.toFixed(3)})`);
+              console.log(`📤 Rack ${pluginId} Param ${param.id} -> ${valueToShowUser} (OSC: ${valueToSendToOSC.toFixed(3)})`);
             }
           }
         }
