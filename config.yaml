@@ -23,7 +23,7 @@ carla:
   # Plugin library paths (for discovery and loading)
   # Multiple paths can be separated by colons (:) on Linux
   plugin_paths:
-    lv2: "/usr/lib/lv2"
+    lv2: "/usr/lib/lv2:/home/jmehta18/.lv2:/usr/local/lib/lv2"
     vst2: "/usr/lib/vst"
     vst3: "/usr/lib/vst3"
     # Add other plugin types as needed:
