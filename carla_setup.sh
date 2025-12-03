@@ -1,8 +1,20 @@
 #!/bin/bash
 
-killall jackd
-killall a2jmidid
-pkill -9 python 2>/dev/null
+sudo killall jackd
+sudo killall a2jmidid
+sudo pkill -9 python 2>/dev/null
+
+PING_TARGET="8.8.8.8"
+ATTEMPTS=3
+ONLINE=false
+
+for i in $(seq 1 $ATTEMPTS); do
+    if ping -c 1 -W 2 "$PING_TARGET" >/dev/null 2>&1; then
+        ONLINE=true
+        break
+    fi
+    sleep 2
+done
 
 # Wait for audio devices to be released
 sleep 2
@@ -93,7 +105,7 @@ done
 
 echo "Python is ready, connecting JACK ports..."
 
-if [[ $1 == "online" ]]; then
+if [ "$ONLINE" = true ]; then
     echo "Starting Flask webapp (app.py)..."
 
     # Clear log
@@ -154,3 +166,4 @@ fi
 
 echo "READY TO START"
 
+wait

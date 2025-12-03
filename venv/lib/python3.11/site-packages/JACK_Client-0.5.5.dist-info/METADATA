@@ -1,0 +1,37 @@
+Metadata-Version: 2.1
+Name: JACK-Client
+Version: 0.5.5
+Summary: JACK Audio Connection Kit (JACK) Client for Python
+Home-page: http://jackclient-python.readthedocs.io/
+Author: Matthias Geier
+Author-email: Matthias.Geier@gmail.com
+License: MIT
+Keywords: JACK,audio,low-latency,multi-channel
+Platform: any
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Topic :: Multimedia :: Sound/Audio
+Requires-Python: >=3.7
+License-File: LICENSE
+Requires-Dist: CFFI >=1.0
+Provides-Extra: numpy
+Requires-Dist: NumPy ; extra == 'numpy'
+
+JACK Audio Connection Kit (JACK) Client for Python
+==================================================
+
+This Python module (named ``jack``) provides bindings for the JACK_ library.
+
+Documentation:
+   https://jackclient-python.readthedocs.io/
+
+Source code and issue tracker:
+   https://github.com/spatialaudio/jackclient-python/
+
+License:
+   MIT -- see the file ``LICENSE`` for details.
+
+.. _JACK: https://jackaudio.org/
