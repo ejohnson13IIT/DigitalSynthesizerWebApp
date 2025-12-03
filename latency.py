@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Measure latency from MIDI input (a2jmidid) to system playback output
 """
@@ -31,18 +32,35 @@ class MIDIToAudioLatencyMonitor:
         
         # Statistics
         self.stats_printed = False
-        
+
     def process(self, frames):
         """Real-time audio processing callback"""
         # Process MIDI events
         for offset, data in self.midi_in.incoming_midi_events():
             if len(data) >= 3:
-                status = data[0] & 0xF0
-                note = data[1]
-                velocity = data[2]
+                # Convert bytes to integers
+                status_byte = data[0] if isinstance(data[0], int) else data[0]
+                note_byte = data[1] if isinstance(data[1], int) else data[1]
+                velocity_byte = data[2] if isinstance(data[2], int) else data[2]
+                
+                # Handle both bytes and int types
+                if isinstance(status_byte, bytes):
+                    status = status_byte[0] if len(status_byte) > 0 else 0
+                else:
+                    status = status_byte
+                    
+                if isinstance(note_byte, bytes):
+                    note = note_byte[0] if len(note_byte) > 0 else 0
+                else:
+                    note = note_byte
+                    
+                if isinstance(velocity_byte, bytes):
+                    velocity = velocity_byte[0] if len(velocity_byte) > 0 else 0
+                else:
+                    velocity = velocity_byte
                 
                 # Detect Note On events
-                if status == 0x90 and velocity > 0:
+                if (status & 0xF0) == 0x90 and velocity > 0:
                     timestamp = time.perf_counter()
                     self.midi_times.append((timestamp, note))
                     print(f"\nMIDI Note On: {note} (vel={velocity}) at {timestamp:.6f}")
@@ -69,14 +87,14 @@ class MIDIToAudioLatencyMonitor:
                         self.latencies.append(latency_ms)
                         self.midi_times.popleft()
                         
-                        print(f"?? Audio detected: RMS={rms:.4f}, Latency: {latency_ms:.2f} ms")
+                        print(f"Audio detected: RMS={rms:.4f}, Latency: {latency_ms:.2f} ms")
                         
                         # Print running statistics every 5 measurements
                         if len(self.latencies) % 5 == 0:
                             self.print_statistics()
                 
                 self.last_energy = rms
-    
+
     def print_statistics(self):
         """Print current latency statistics"""
         if len(self.latencies) < 2:
@@ -91,7 +109,7 @@ class MIDIToAudioLatencyMonitor:
         print(f"   Median: {np.median(latencies):.2f} ms")
     
     def connect_ports(self):
-        """Auto-connect to MIDI input and system playback"""
+        """Auto-connect to MIDI input and audio output"""
         # Find AKM320 MIDI port
         try:
             midi_ports = self.client.get_ports(
@@ -101,9 +119,9 @@ class MIDIToAudioLatencyMonitor:
             )
             if midi_ports:
                 self.client.connect(midi_ports[0], self.midi_in)
-                print(f"? Connected MIDI: {midi_ports[0]} -> {self.midi_in.name}")
+                print(f"Connected MIDI: {midi_ports[0]} -> {self.midi_in.name}")
             else:
-                print("? Warning: Could not find a2j:AKM320 MIDI port")
+                print("Warning: Could not find a2j:AKM320 MIDI port")
                 print("   Available MIDI ports:")
                 all_midi = self.client.get_ports(is_midi=True, is_input=False)
                 for port in all_midi:
@@ -111,21 +129,40 @@ class MIDIToAudioLatencyMonitor:
         except Exception as e:
             print(f"Error connecting MIDI: {e}")
         
-        # Connect to system playback (monitor what's being sent to speakers)
+        # Connect to your plugin chain output (monitor the final audio output)
+        # Try to find your final plugin output (3 Band EQ or NewProject)
         try:
-            playback_ports = self.client.get_ports(
-                name_pattern="system:playback",
+            # First try to find 3 Band EQ output (your final plugin)
+            eq_ports = self.client.get_ports(
+                name_pattern="3 Band EQ:audio-out",
                 is_midi=False,
-                is_input=True
+                is_input=False
             )
-            if len(playback_ports) >= 1:
-                self.client.connect(playback_ports[0], self.audio_in)
-                print(f"? Connected Audio: {playback_ports[0]} -> {self.audio_in.name}")
+            if len(eq_ports) >= 1:
+                self.client.connect(eq_ports[0], self.audio_in)
+                print(f"Connected Audio: {eq_ports[0]} -> {self.audio_in.name}")
             else:
-                print("? Warning: Could not find system:playback ports")
+                # Fallback to NewProject output
+                newproject_ports = self.client.get_ports(
+                    name_pattern="NewProject:audio-out",
+                    is_midi=False,
+                    is_input=False
+                )
+                if len(newproject_ports) >= 1:
+                    self.client.connect(newproject_ports[0], self.audio_in)
+                    print(f"Connected Audio: {newproject_ports[0]} -> {self.audio_in.name}")
+                else:
+                    print("Warning: Could not find plugin output ports")
+                    print("   Available audio output ports:")
+                    all_audio = self.client.get_ports(is_midi=False, is_input=False)
+                    for port in all_audio[:10]:  # Show first 10
+                        print(f"     - {port.name}")
+                    print("   (showing first 10, use one of these)")
         except Exception as e:
-            print(f"? Error connecting audio: {e}")
-    
+            print(f"Error connecting audio: {e}")
+            print("   You may need to manually connect:")
+            print("   jack_connect <your_plugin>:audio-out_1 MIDILatencyMonitor:audio_monitor")
+
     def start(self):
         """Start monitoring"""
         self.client.activate()
@@ -133,7 +170,7 @@ class MIDIToAudioLatencyMonitor:
         print("\n" + "="*60)
         print("MIDI to Audio Latency Monitor")
         print("="*60)
-        print("Monitoring MIDI input -> System playback")
+        print("Monitoring MIDI input -> Plugin audio output")
         print("Play MIDI notes to measure latency...")
         print("Press Ctrl+C to stop and see final statistics")
         print("="*60 + "\n")
@@ -167,10 +204,11 @@ class MIDIToAudioLatencyMonitor:
             print("No measurements collected.")
             print("Make sure:")
             print("  1. MIDI keyboard is connected and sending notes")
-            print("  2. Audio is playing through system:playback")
-            print("  3. Your plugin chain is producing audio")
+            print("  2. Audio is being produced by your plugin")
+            print("  3. Audio connection is made to MIDILatencyMonitor:audio_monitor")
         
         print("="*60)
+
 
 def main():
     try:

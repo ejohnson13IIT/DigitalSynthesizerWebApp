@@ -212,6 +212,15 @@
   </head>
   <body>
     <h1>Digital Synthesizer Control</h1>
+  <label for="pluginUpload">Upload plugin:</label>
+  <input 
+    type="file" 
+    id="pluginUpload" 
+    accept=".zip"
+    style="color:white;"
+  >
+  <button id="uploadPluginButton">Upload</button>
+  <span id="uploadStatus" class="action-status"></span>
     <div class="control-panel">
       <label for="pluginSelect">Add plugin:</label>
       <select id="pluginSelect">
@@ -253,6 +262,72 @@
       const pluginActionStatus = document.getElementById('pluginActionStatus');
       addPluginButton.addEventListener('click', handleAddPlugin);
       discoverPluginsButton.addEventListener('click', handleDiscoverPlugins);
+	// ===============================
+	// Plugin Upload Handler
+	// ===============================
+	const uploadInput = document.getElementById("pluginUpload");
+	const uploadButton = document.getElementById("uploadPluginButton");
+	const uploadStatus = document.getElementById("uploadStatus");
+
+	function setUploadStatus(message, type = "info") {
+	  let color = "#00ffcc";
+	  if (type === "error") color = "#ff6b6b";
+	  if (type === "success") color = "#8aff8a";
+	  uploadStatus.style.color = color;
+	  uploadStatus.textContent = message;
+	}
+
+	uploadButton.addEventListener("click", async () => {
+	  const file = uploadInput.files[0];
+	  if (!file) {
+	    setUploadStatus("Choose a file first.", "error");
+	    return;
+	  }
+
+	  // Validate extension (extra safety)
+	  const validExt = [".zip"];
+	  const lower = file.name.toLowerCase();
+	  if (!validExt.some(ext => lower.endsWith(ext))) {
+	    setUploadStatus("Invalid file type.", "error");
+	    return;
+	  }
+
+	  uploadButton.disabled = true;
+	  setUploadStatus("Uploading...", "info");
+
+	  const formData = new FormData();
+	  formData.append("file", file);
+
+	  try {
+	    const resp = await fetch("/api/upload-plugin", {
+	      method: "POST",
+	      body: formData
+	    });
+
+	    const data = await resp.json();
+	    if (!resp.ok) {
+	      setUploadStatus(data.error || "Upload failed.", "error");
+	      uploadButton.disabled = false;
+	      return;
+	    }
+
+	    setUploadStatus("Upload successful!", "success");
+
+	    // auto rediscover plugins after upload
+	    try {
+	      await handleDiscoverPlugins();
+	    } catch (_) {}
+
+	    // clear file input
+	    uploadInput.value = "";
+	  } catch (err) {
+	    console.error("Upload error:", err);
+	    setUploadStatus("Error uploading plugin.", "error");
+	  }
+
+	  uploadButton.disabled = false;
+	});
+
 
       function setPluginStatus(message, type = 'info') {
         if (!pluginActionStatus) return;

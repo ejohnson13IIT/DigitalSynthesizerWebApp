@@ -1,6 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO
 from pythonosc.udp_client import SimpleUDPClient
+from werkzeug.utils import secure_filename
 from config_loader import (
     get_osc_config,
     get_flask_config,
@@ -9,6 +10,8 @@ from config_loader import (
 )
 import logging
 import requests
+import os
+import shutil
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -38,6 +41,11 @@ api_host = "127.0.0.1" if raw_api_host in ("0.0.0.0", "::") else raw_api_host
 api_port = carla_api_cfg.get("port", 8080)
 carla_api_base = f"http://{api_host}:{api_port}"
 logger.info(f"Carla API base URL: {carla_api_base}")
+
+#Setting allowed file types for file uploads
+lv2_dir = "/home/jmehta18/.lv2"
+vst2_dir = "/home/jmehta18/.vst3"
+vst3_dir = "/home/jmehta18/.vst3"
 
 @app.route("/")
 def index():
@@ -152,6 +160,85 @@ def proxy_remove_plugin():
     except Exception as exc:
         logger.exception("Unexpected error while removing plugin")
         return jsonify({"error": "Unexpected server error", "detail": str(exc)}), 500
+
+@app.route("/api/upload-plugin", methods=["POST"])
+def upload_plugin():
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "No file uploaded"}), 400
+
+        file = request.files["file"]
+        
+        if not file.filename.lower().endswith(".zip"):
+            return jsonify({"error": "Only .zip files are allowed"}), 400
+
+        filename = secure_filename(file.filename)
+        temp_zip_path = os.path.join("/tmp", filename)
+        
+        # Save ZIP to /tmp
+        file.save(temp_zip_path)
+
+        # Create temp extract directory
+        extract_dir = os.path.join("/tmp", filename + "_extract")
+        if os.path.exists(extract_dir):
+            shutil.rmtree(extract_dir)
+        os.makedirs(extract_dir, exist_ok=True)
+
+        # Extract ZIP
+        import zipfile
+        with zipfile.ZipFile(temp_zip_path, "r") as zip_ref:
+            zip_ref.extractall(extract_dir)
+
+        os.remove(temp_zip_path)
+
+        # Determine plugin type by scanning extracted contents
+        installed_plugins = []
+
+        for root, dirs, files in os.walk(extract_dir):
+            # LV2 bundles (folders ending in .lv2/)
+            for d in dirs:
+                if d.endswith(".lv2"):
+                    src = os.path.join(root, d)
+                    dst = os.path.join(lv2_dir, d)
+                    shutil.copytree(src, dst, dirs_exist_ok=True)
+                    installed_plugins.append(d)
+
+            # VST3 bundles (folders ending in .vst3/)
+            for d in dirs:
+                if d.endswith(".vst3"):
+                    src = os.path.join(root, d)
+                    dst = os.path.join(vst3_dir, d)
+                    shutil.copytree(src, dst, dirs_exist_ok=True)
+                    installed_plugins.append(d)
+
+            # VST2 (.so or .dll files)
+            for f in files:
+                if f.endswith(".dll"):
+                    src = os.path.join(root, f)
+                    dst = os.path.join(vst2_dir, f)
+                    shutil.copy2(src, dst)
+                    installed_plugins.append(f)
+
+        shutil.rmtree(extract_dir)
+
+        if not installed_plugins:
+            return jsonify({"error": "No valid plugin files (.lv2, .vst3, .so, .dll) found inside ZIP"}), 400
+
+        # Trigger plugin discovery
+        try:
+            requests.get(f"{carla_api_base}/plugins/discover", timeout=10)
+        except:
+            pass
+
+        return jsonify({
+            "success": True,
+            "installed": installed_plugins
+        }), 200
+
+    except Exception as e:
+        logger.exception("Upload failed")
+        return jsonify({"error": str(e)}), 500
+
 
 @socketio.on("knob_change")
 def handle_knob_change(data):
