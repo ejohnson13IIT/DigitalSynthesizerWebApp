@@ -35,65 +35,82 @@ class MIDIToAudioLatencyMonitor:
 
     def process(self, frames):
         """Real-time audio processing callback"""
+        # Get sample rate for accurate timing
+        sample_rate = self.client.samplerate
+        buffer_time = frames / sample_rate  # Time duration of this buffer in seconds
+        
         # Process MIDI events
         for offset, data in self.midi_in.incoming_midi_events():
             if len(data) >= 3:
-                # Convert bytes to integers
-                status_byte = data[0] if isinstance(data[0], int) else data[0]
-                note_byte = data[1] if isinstance(data[1], int) else data[1]
-                velocity_byte = data[2] if isinstance(data[2], int) else data[2]
-                
-                # Handle both bytes and int types
-                if isinstance(status_byte, bytes):
-                    status = status_byte[0] if len(status_byte) > 0 else 0
-                else:
-                    status = status_byte
-                    
-                if isinstance(note_byte, bytes):
-                    note = note_byte[0] if len(note_byte) > 0 else 0
-                else:
-                    note = note_byte
-                    
-                if isinstance(velocity_byte, bytes):
-                    velocity = velocity_byte[0] if len(velocity_byte) > 0 else 0
-                else:
-                    velocity = velocity_byte
+                # Convert to integers
+                status = int(data[0]) & 0xFF
+                note = int(data[1]) & 0xFF
+                velocity = int(data[2]) & 0xFF
                 
                 # Detect Note On events
                 if (status & 0xF0) == 0x90 and velocity > 0:
-                    timestamp = time.perf_counter()
-                    self.midi_times.append((timestamp, note))
-                    print(f"\nMIDI Note On: {note} (vel={velocity}) at {timestamp:.6f}")
+                    # Calculate precise timestamp: current time + offset within buffer
+                    current_time = time.perf_counter()
+                    # Account for MIDI event position within the buffer
+                    offset_time = (offset / sample_rate)  # Time offset within buffer
+                    # Estimate when MIDI actually occurred (start of buffer processing minus offset)
+                    # Since we're processing the buffer now, the MIDI happened slightly before
+                    # We approximate by using current time minus the remaining buffer time
+                    midi_timestamp = current_time - (buffer_time - offset_time)
+                    self.midi_times.append((midi_timestamp, note))
         
-        # Process audio for onset detection
-        if len(self.midi_times) > 0:
-            audio_data = self.audio_in.get_array()
+        # Process audio for onset detection (always process, not just when MIDI exists)
+        audio_data = self.audio_in.get_array()
+        
+        if len(audio_data) > 0:
+            # Calculate RMS energy
+            rms = np.sqrt(np.mean(audio_data**2))
             
-            if len(audio_data) > 0:
-                # Calculate RMS energy
-                rms = np.sqrt(np.mean(audio_data**2))
+            # Detect onset: energy rising above threshold
+            if rms > self.audio_threshold and self.last_energy < self.audio_threshold:
+                # Find the sample index where onset likely occurred
+                # Look for the first sample that crosses threshold
+                onset_sample = None
+                for i in range(len(audio_data)):
+                    sample_rms = abs(audio_data[i])
+                    if sample_rms > self.audio_threshold:
+                        onset_sample = i
+                        break
                 
-                # Detect onset: energy rising above threshold
-                if rms > self.audio_threshold and self.last_energy < self.audio_threshold:
-                    timestamp = time.perf_counter()
-                    self.audio_onsets.append((timestamp, rms))
+                # Calculate precise timestamp accounting for onset position in buffer
+                current_time = time.perf_counter()
+                if onset_sample is not None:
+                    # Audio onset happened at: current time - (remaining buffer time)
+                    onset_time_in_buffer = onset_sample / sample_rate
+                    audio_timestamp = current_time - (buffer_time - onset_time_in_buffer)
+                else:
+                    # Fallback: assume onset at start of buffer
+                    audio_timestamp = current_time - buffer_time
+                
+                self.audio_onsets.append((audio_timestamp, rms))
+                
+                # Match with most recent MIDI event
+                if len(self.midi_times) > 0:
+                    midi_time, note = self.midi_times[0]
+                    latency = audio_timestamp - midi_time
+                    latency_ms = latency * 1000
                     
-                    # Match with most recent MIDI event
-                    if len(self.midi_times) > 0:
-                        midi_time, note = self.midi_times[0]
-                        latency = timestamp - midi_time
-                        latency_ms = latency * 1000
-                        
+                    # Only record positive latencies (audio after MIDI)
+                    if latency_ms > 0:
                         self.latencies.append(latency_ms)
                         self.midi_times.popleft()
                         
-                        print(f"Audio detected: RMS={rms:.4f}, Latency: {latency_ms:.2f} ms")
+                        print(f"Latency: {latency_ms:.2f} ms")
                         
                         # Print running statistics every 5 measurements
                         if len(self.latencies) % 5 == 0:
                             self.print_statistics()
-                
-                self.last_energy = rms
+                    else:
+                        # Negative latency means audio detected before MIDI (shouldn't happen)
+                        print(f"Warning: Negative latency detected ({latency_ms:.2f} ms), skipping")
+                        self.midi_times.popleft()
+            
+            self.last_energy = rms
 
     def print_statistics(self):
         """Print current latency statistics"""
