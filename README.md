@@ -177,7 +177,7 @@ Copy `config_local.yaml.example` to `config_local.yaml` and adjust paths and por
 
 ## Hardware Notes
 
-The `potdemo/` directory contains a C/C++ demo for reading physical potentiometer input (analog knobs via ADC), likely intended as a future hardware control surface extension.
+The `potdemo/` directory contains a C/C++ demo for reading physical potentiometer input (analog knobs via ADC) that was developed to control analog knobs to control the Carla API directly.
 
 ---
 
